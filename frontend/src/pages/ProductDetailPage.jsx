@@ -5,6 +5,7 @@ import api from '../services/api';
 import ProductCard from '../components/ui/ProductCard';
 import { ProductCardSkeleton } from '../components/ui/SkeletonLoader';
 import { mockProducts } from '../data/mockProducts';
+import { addToCompare } from './ComparePage';
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -207,6 +208,13 @@ export default function ProductDetailPage() {
               >
                 {justAdded ? 'Đã thêm' : 'Thêm vào giỏ'}
               </button>
+              <button
+                type="button"
+                onClick={() => addToCompare(product.id)}
+                className="inline-flex items-center justify-center px-6 py-3 rounded-full border border-black/15 bg-white/70 text-xs uppercase tracking-[0.16em] hover:bg-white transition-colors"
+              >
+                Thêm vào so sánh
+              </button>
             </div>
           </div>
         </div>
@@ -221,7 +229,7 @@ export default function ProductDetailPage() {
           {related.length ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 md:gap-7">
               {related.map((item) => (
-                <ProductCard key={item.id} product={item} />
+                <ProductCard key={item.id} product={item} onAddToCompare={(p) => addToCompare(p.id)} />
               ))}
             </div>
           ) : (

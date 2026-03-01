@@ -7,6 +7,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import CartPage from './pages/CartPage';
+import ComparePage from './pages/ComparePage';
 import CheckoutPage from './pages/CheckoutPage';
 import PaymentResultPage from './pages/PaymentResultPage';
 import {
@@ -42,6 +43,7 @@ function App() {
         <Route path="login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
         <Route path="register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
         <Route path="cart" element={<CartPage />} />
+        <Route path="compare" element={<ComparePage />} />
         <Route path="payment/result" element={<PaymentResultPage />} />
         <Route path="unauthorized" element={<UnauthorizedPage />} />
 
