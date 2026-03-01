@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Sparkles, Search, ShieldCheck, CheckCircle, Award, Sun, Glasses, RefreshCw, Monitor, Circle, Wrench } from 'lucide-react';
 import ProductCard from '../components/ui/ProductCard';
 import api from '../services/api';
-import { mockCategories, mockProducts } from '../data/mockProducts';
+import { mockProducts } from '../data/mockProducts';
 
 export default function HomePage() {
   const heroRef = useRef(null);
@@ -20,7 +20,12 @@ export default function HomePage() {
   const [featured, setFeatured] = useState([]);
   const [usedProducts, setUsedProducts] = useState([]);
   const [isFallback, setIsFallback] = useState(false);
+  const [homeStats, setHomeStats] = useState(null);
   const usedRef = useRef(null);
+
+  useEffect(() => {
+    api.get('/stats/home').then((res) => setHomeStats(res.data?.data ?? null)).catch(() => setHomeStats(null));
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -177,60 +182,24 @@ export default function HomePage() {
       <section className="py-16 bg-background-alt">
         <div className="max-w-360 mx-auto px-4 sm:px-6 lg:px-10">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <Link to="/products?category=kinh-ram" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <Sun size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Kính râm</p>
-                <p className="text-xs text-[#a8a196] mt-1">125 SP</p>
-              </div>
-            </Link>
-            <Link to="/products?category=gong-kinh" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <Glasses size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Gọng kính</p>
-                <p className="text-xs text-[#a8a196] mt-1">89 SP</p>
-              </div>
-            </Link>
-            <Link to="/products?condition=USED" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <RefreshCw size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Kính cũ</p>
-                <p className="text-xs text-[#a8a196] mt-1">45 SP</p>
-              </div>
-            </Link>
-            <Link to="/products?lens=blue-light" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <Monitor size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Chống ánh sáng xanh</p>
-                <p className="text-xs text-[#a8a196] mt-1">56 SP</p>
-              </div>
-            </Link>
-            <Link to="/products?category=trong-kinh" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <Circle size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Tròng kính</p>
-                <p className="text-xs text-[#a8a196] mt-1">24 SP</p>
-              </div>
-            </Link>
-            <Link to="/products?category=phu-kien" className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
-                <Wrench size={24} strokeWidth={1.5} />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">Phụ kiện</p>
-                <p className="text-xs text-[#a8a196] mt-1">35 SP</p>
-              </div>
-            </Link>
+            {[
+              { to: '/products?category=kinh-ram', label: 'Kính râm', icon: Sun, getCount: (s) => s?.categories?.[0]?.count ?? '–' },
+              { to: '/products?category=gong-kinh', label: 'Gọng kính', icon: Glasses, getCount: (s) => s?.categories?.[1]?.count ?? '–' },
+              { to: '/products?condition=USED', label: 'Kính cũ', icon: RefreshCw, getCount: (s) => s?.usedCount ?? '–' },
+              { to: '/products?lens=blue-light', label: 'Chống ánh sáng xanh', icon: Monitor, getCount: (s) => s?.blueLightCount ?? '–' },
+              { to: '/products?category=trong-kinh', label: 'Tròng kính', icon: Circle, getCount: (s) => s?.categories?.[2]?.count ?? '–' },
+              { to: '/products?category=phu-kien', label: 'Phụ kiện', icon: Wrench, getCount: (s) => s?.categories?.[3]?.count ?? '–' },
+            ].map(({ to, label, icon: Icon, getCount }) => (
+              <Link key={to} to={to} className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow">
+                <div className="w-12 h-12 rounded-full bg-background-alt flex items-center justify-center text-[#7f786f]">
+                  <Icon size={24} strokeWidth={1.5} />
+                </div>
+                <div className="text-center">
+                  <p className="font-medium text-sm">{label}</p>
+                  <p className="text-xs text-[#a8a196] mt-1">{typeof getCount(homeStats) === 'number' ? `${getCount(homeStats)} SP` : getCount(homeStats)}</p>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
@@ -240,15 +209,15 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="glass rounded-2xl p-6">
               <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f]">Sản phẩm</p>
-              <p className="font-serif text-4xl mt-2">1,200+</p>
+              <p className="font-serif text-4xl mt-2">{homeStats?.totalProducts != null ? homeStats.totalProducts.toLocaleString('vi-VN') + (homeStats.totalProducts >= 1000 ? '+' : '') : '–'}</p>
             </div>
             <div className="glass rounded-2xl p-6">
               <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f]">Khách hàng</p>
-              <p className="font-serif text-4xl mt-2">3,500+</p>
+              <p className="font-serif text-4xl mt-2">{homeStats?.totalCustomers != null ? homeStats.totalCustomers.toLocaleString('vi-VN') + (homeStats.totalCustomers >= 1000 ? '+' : '') : '–'}</p>
             </div>
             <div className="glass rounded-2xl p-6">
               <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f]">Đánh giá tích cực</p>
-              <p className="font-serif text-4xl mt-2">99%</p>
+              <p className="font-serif text-4xl mt-2">{homeStats?.positiveReviewPercent != null ? `${homeStats.positiveReviewPercent}%` : '–'}</p>
             </div>
           </div>
         </div>
