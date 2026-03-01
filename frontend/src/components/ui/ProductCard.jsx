@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShoppingBag } from 'lucide-react';
+import { ShoppingBag, Scale } from 'lucide-react';
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, onAddToCompare }) {
   if (!product) return null;
   const images = Array.isArray(product.images) ? product.images : product.images ? [product.images] : [];
   const imageUrl = images[0] || 'https://placehold.co/800x600?text=Kinh+Tot';
@@ -75,15 +75,26 @@ export default function ProductCard({ product }) {
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           />
-          <div className="absolute left-4 right-4 bottom-4 z-20 translate-y-2 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+          <div className="absolute left-4 right-4 bottom-4 z-20 translate-y-2 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 flex gap-2">
             <button
               type="button"
               onClick={addToCart}
-              className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 text-xs uppercase tracking-[0.16em] bg-white/82 backdrop-blur-md border border-white/70 text-primary rounded-full hover:bg-white transition-colors"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs uppercase tracking-[0.16em] bg-white/82 backdrop-blur-md border border-white/70 text-primary rounded-full hover:bg-white transition-colors"
             >
               <ShoppingBag size={14} strokeWidth={1.8} />
-              Thêm vào giỏ
+              Thêm giỏ
             </button>
+            {onAddToCompare ? (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToCompare(product); }}
+                className="inline-flex items-center justify-center p-2.5 rounded-full bg-white/82 backdrop-blur-md border border-white/70 text-primary hover:bg-white transition-colors"
+                title="So sánh"
+                aria-label="So sánh"
+              >
+                <Scale size={14} strokeWidth={1.8} />
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="space-y-1.5">

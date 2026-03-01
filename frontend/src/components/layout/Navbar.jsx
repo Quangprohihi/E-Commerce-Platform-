@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
-import { Search, ShoppingBag, User, Menu, X, MessageCircle } from 'lucide-react';
+import { Search, ShoppingBag, User, Menu, X, MessageCircle, Scale } from 'lucide-react';
+import { getCompareIds } from '../../pages/ComparePage';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { getRoleHomePath } from '../../utils/auth';
@@ -14,6 +15,7 @@ export default function Navbar({ onOpenAIChat }) {
   const scrollY = useScrollPosition();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [compareCount, setCompareCount] = useState(() => getCompareIds().length);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -72,6 +74,13 @@ export default function Navbar({ onOpenAIChat }) {
     };
   }, []);
 
+  const syncCompareCount = () => setCompareCount(getCompareIds().length);
+  useEffect(() => {
+    syncCompareCount();
+    window.addEventListener('compare-updated', syncCompareCount);
+    return () => window.removeEventListener('compare-updated', syncCompareCount);
+  }, []);
+
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -114,6 +123,14 @@ export default function Navbar({ onOpenAIChat }) {
                 </span>
               ) : null}
             </Link>
+            {compareCount >= 2 ? (
+              <Link to="/compare" className="relative p-2 text-primary/80 hover:text-accent transition-colors" aria-label="So sánh sản phẩm">
+                <Scale size={20} strokeWidth={1.5} />
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-[10px] leading-4 text-white bg-primary text-center">
+                  {compareCount}
+                </span>
+              </Link>
+            ) : null}
             <button type="button" onClick={onOpenAIChat} className="p-2 text-primary/80 hover:text-accent transition-colors" aria-label="AI Stylist">
               <MessageCircle size={20} strokeWidth={1.5} />
             </button>
@@ -170,6 +187,11 @@ export default function Navbar({ onOpenAIChat }) {
                 <Link to="/cart" className="text-sm uppercase tracking-[0.18em] text-primary/85 hover:text-accent" onClick={() => setMenuOpen(false)}>
                   Giỏ hàng
                 </Link>
+                {compareCount >= 2 ? (
+                  <Link to="/compare" className="text-sm uppercase tracking-[0.18em] text-primary/85 hover:text-accent" onClick={() => setMenuOpen(false)}>
+                    So sánh ({compareCount})
+                  </Link>
+                ) : null}
                 <button type="button" onClick={() => { setMenuOpen(false); onOpenAIChat?.(); }} className="text-left text-sm uppercase tracking-[0.18em] text-primary/85 hover:text-accent">
                   AI Stylist
                 </button>

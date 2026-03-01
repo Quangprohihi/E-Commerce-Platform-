@@ -5,6 +5,7 @@ import ProductCard from '../components/ui/ProductCard';
 import { ProductCardSkeleton } from '../components/ui/SkeletonLoader';
 import api from '../services/api';
 import { filterMockProducts, mockProducts, sortProducts } from '../data/mockProducts';
+import { addToCompare } from './ComparePage';
 
 export default function ProductListPage() {
   const [searchParams] = useSearchParams();
@@ -177,7 +178,7 @@ export default function ProductListPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-7">
                 {data.items?.map((p) => (
-                  <ProductCard key={p.id} product={p} />
+                  <ProductCard key={p.id} product={p} onAddToCompare={(p) => addToCompare(p.id)} />
                 ))}
               </div>
             )}
