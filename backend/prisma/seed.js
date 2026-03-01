@@ -107,6 +107,8 @@ async function main() {
   console.log('Created categories:', cat1.slug, cat2.slug);
 
   // --- Re-seed products using high-quality Unsplash images ---
+  // Xóa OrderDetail trước (foreign key tới Product), rồi mới xóa Product
+  await prisma.orderDetail.deleteMany({});
   await prisma.product.deleteMany({});
   const images = {
     img1: ['https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=1200&q=80'],
@@ -378,7 +380,7 @@ async function main() {
       description: 'Phong cách gọng clubmaster đặc trưng của Persol với hoạ tiết đồi mồi và logo mũi tên bạc sáng bóng ở càng kính. Biểu tượng thực sự của sự lịch lãm của quý ông nước Ý.',
       price: '136000',
       salePrice: '118000',
-      images: images.frame3,
+      images: images.img7,
       condition: 'USED',
       frameMaterial: 'ACETATE',
       frameShape: 'SQUARE',
@@ -400,7 +402,7 @@ async function main() {
       description: 'Gọng thép không gỉ thiết kế công thái học từ Đức. Mykita Lite mang đến trải nghiệm đeo như không đeo mà vẫn giữ được sự tinh giản theo tư duy của trường phái Bauhaus.',
       price: '248000',
       salePrice: '220000',
-      images: images.frame5,
+      images: images.img8,
       condition: 'LIKE_NEW',
       frameMaterial: 'METAL',
       frameShape: 'OVAL',

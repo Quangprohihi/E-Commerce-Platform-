@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
 import { Search, ShoppingBag, User, Menu, X, MessageCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -8,12 +8,29 @@ import { getRoleHomePath } from '../../utils/auth';
 
 export default function Navbar({ onOpenAIChat }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { isAuthenticated, role, logout } = useAuth();
   const scrollY = useScrollPosition();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (location.pathname === '/products') {
+      const q = searchParams.get('search') || '';
+      setSearchQuery(q);
+    }
+  }, [location.pathname, location.search, searchParams]);
   const isScrolled = scrollY > 20;
   const accountPath = isAuthenticated ? (role === 'BUYER' ? '/account' : getRoleHomePath(role)) : '/login';
+
+  const handleSearch = (e) => {
+    e?.preventDefault();
+    const q = (searchQuery || '').trim();
+    if (q) navigate(`/products?search=${encodeURIComponent(q)}`);
+    else navigate('/products');
+  };
 
   const handleLogout = () => {
     logout();
@@ -72,13 +89,23 @@ export default function Navbar({ onOpenAIChat }) {
             KÍNH TỐT
           </Link>
 
-          <div className="hidden md:flex items-center gap-10">
-            <Link to="/products" className="text-xs uppercase tracking-[0.22em] text-primary/80 hover:text-accent transition-colors">
+          <div className="hidden md:flex items-center gap-6">
+            <Link to="/products" className="text-xs uppercase tracking-[0.22em] text-primary/80 hover:text-accent transition-colors shrink-0">
               Sản phẩm
             </Link>
-            <button type="button" className="p-2 text-primary/80 hover:text-accent transition-colors" aria-label="Tìm kiếm">
-              <Search size={20} strokeWidth={1.5} />
-            </button>
+            <form onSubmit={handleSearch} className="flex items-center gap-0 rounded-full border border-black/15 bg-white/70 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all min-w-[180px] max-w-[240px]">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm sản phẩm..."
+                className="w-full bg-transparent py-2 pl-4 pr-10 text-sm text-primary placeholder:text-primary/50 outline-none rounded-l-full"
+                aria-label="Tìm sản phẩm"
+              />
+              <button type="submit" className="p-2 text-primary/70 hover:text-primary shrink-0 rounded-r-full" aria-label="Tìm kiếm">
+                <Search size={18} strokeWidth={1.5} />
+              </button>
+            </form>
             <Link to="/cart" className="relative p-2 text-primary/80 hover:text-accent transition-colors" aria-label="Giỏ hàng">
               <ShoppingBag size={20} strokeWidth={1.5} />
               {cartCount > 0 ? (
@@ -124,6 +151,19 @@ export default function Navbar({ onOpenAIChat }) {
               className="md:hidden py-4 border-t border-black/10 glass rounded-2xl mb-4"
             >
               <div className="flex flex-col gap-4 px-4">
+                <form onSubmit={(e) => { handleSearch(e); setMenuOpen(false); }} className="flex items-center gap-0 rounded-full border border-black/15 bg-white/80 min-w-0">
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm sản phẩm..."
+                    className="w-full bg-transparent py-2.5 pl-4 pr-10 text-sm text-primary placeholder:text-primary/50 outline-none rounded-l-full"
+                    aria-label="Tìm sản phẩm"
+                  />
+                  <button type="submit" className="p-2 text-primary/70 shrink-0 rounded-r-full" aria-label="Tìm kiếm">
+                    <Search size={18} strokeWidth={1.5} />
+                  </button>
+                </form>
                 <Link to="/products" className="text-sm uppercase tracking-[0.18em] text-primary/85 hover:text-accent" onClick={() => setMenuOpen(false)}>
                   Sản phẩm
                 </Link>

@@ -20,6 +20,7 @@ export default function ProductListPage() {
     categoryId: searchParams.get('categoryId') || '',
     minPrice: searchParams.get('minPrice') || '',
     maxPrice: searchParams.get('maxPrice') || '',
+    search: searchParams.get('search') || '',
   };
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function ProductListPage() {
     if (filters.categoryId) params.set('categoryId', filters.categoryId);
     if (filters.minPrice) params.set('minPrice', filters.minPrice);
     if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+    if (filters.search) params.set('search', filters.search);
     setLoading(true);
     api.get(`/products?${params}`)
       .then((res) => {
