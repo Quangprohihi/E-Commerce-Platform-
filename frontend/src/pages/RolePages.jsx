@@ -72,8 +72,8 @@ function DataTable({ columns, rows }) {
       <table className="w-full min-w-190 text-sm">
         <thead>
           <tr className="text-left border-b border-black/10 text-text-muted uppercase tracking-[0.08em] text-xs">
-            {columns.map((column) => (
-              <th key={column} className="py-3 pr-3">{column}</th>
+            {columns.map((column, i) => (
+              <th key={column} className={`py-3 pr-3 ${i === 0 && column === 'STT' ? 'text-center' : ''}`}>{column}</th>
             ))}
           </tr>
         </thead>
@@ -501,12 +501,11 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
-  const [orderId, setOrderId] = useState('');
   const [status, setStatus] = useState('CONFIRMED');
   const [statusFilter, setStatusFilter] = useState('');
   const [order, setOrder] = useState(null);
 
-  const loadOrders = async (nextPage = page, nextOrderId = '') => {
+  const loadOrders = async (nextPage = page) => {
     setLoading(true);
     setListError('');
     try {
@@ -515,7 +514,6 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
           limit: meta.limit,
           page: nextPage,
           status: statusFilter || undefined,
-          orderId: nextOrderId || undefined,
           search: search || undefined,
         },
       });
@@ -541,20 +539,16 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
     loadOrders(1);
   }, [statusFilter]);
 
-  const lookupOrder = async () => {
-    if (!orderId) {
-      setListError('Vui lòng nhập Order ID để tra cứu.');
-      return;
-    }
+  const refreshOrderDetail = async () => {
+    if (!order?.id) return;
     setListError('');
-    setOrder(null);
     try {
-      const response = await api.get(`/orders/${orderId}`);
+      const response = await api.get(`/orders/${order.id}`);
       setOrder(response.data?.data || null);
       setStatus(response.data?.data?.status || 'CONFIRMED');
-      await loadOrders(1, orderId);
+      await loadOrders(page);
     } catch (err) {
-      setListError(err.response?.data?.message || 'Không thể tải đơn hàng theo ID.');
+      setListError(err.response?.data?.message || 'Không thể tải chi tiết đơn.');
     }
   };
 
@@ -562,7 +556,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
     if (!order?.id) return;
     try {
       await api.patch(`/orders/${order.id}/status`, { status });
-      await lookupOrder();
+      await refreshOrderDetail();
       setListError('Cập nhật trạng thái thành công.');
       await loadOrders(page);
     } catch (err) {
@@ -571,7 +565,6 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
   };
 
   const viewOrderDetail = async (selectedOrder) => {
-    setOrderId(selectedOrder.id);
     setListError('');
     try {
       const response = await api.get(`/orders/${selectedOrder.id}`);
@@ -581,7 +574,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
     } catch (err) {
       setOrder(selectedOrder);
       setStatus(selectedOrder.status || 'CONFIRMED');
-      setListError(err.response?.data?.message || 'Không thể tải chi tiết order.');
+      setListError(err.response?.data?.message || 'Không thể tải chi tiết đơn.');
     }
   };
 
@@ -593,7 +586,6 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
   const resetFilters = () => {
     setSearch('');
     setStatusFilter('');
-    setOrderId('');
     setOrder(null);
     setPage(1);
     setListError('');
@@ -621,7 +613,8 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm theo order ID / buyer / email / phone"
+            onKeyDown={(e) => e.key === 'Enter' && applySearch()}
+            placeholder="Mã đơn, tên buyer, email hoặc SĐT"
             className="h-10 rounded-xl border border-black/10 px-3 bg-white/70"
           />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-xl border border-black/10 px-3 bg-white/70">
@@ -684,12 +677,10 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Tra cứu theo Order ID">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
-          <input value={orderId} onChange={(event) => setOrderId(event.target.value)} placeholder="Nhập Order ID" className="h-11 rounded-xl border border-black/10 px-4 bg-white/70" />
-          <button type="button" onClick={lookupOrder} className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.14em]">Tra cứu</button>
-        </div>
-        {order ? (
+      <SectionCard title="Chi tiết đơn hàng">
+        {!order ? (
+          <p className="text-text-muted text-sm">Chọn một đơn từ bảng trên và bấm <strong>Xem chi tiết</strong>.</p>
+        ) : (
           <div className="mt-4 rounded-xl border border-black/10 bg-white/60 p-4 space-y-3">
             <p><span className="text-text-muted">Mã đơn:</span> {order.id}</p>
             <p><span className="text-text-muted">Buyer:</span> {order.buyer?.fullName || '--'} ({order.buyer?.email || '--'})</p>
@@ -720,7 +711,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
               <button type="button" onClick={updateStatus} className="h-10 px-4 rounded-xl border border-black/20 text-xs uppercase tracking-[0.12em]">Cập nhật trạng thái</button>
             </div>
           </div>
-        ) : null}
+        )}
       </SectionCard>
     </PageShell>
   );
@@ -730,7 +721,7 @@ export function SellerOrdersPage() {
   return (
     <ManageOrdersPage
       title="Đơn hàng Seller"
-      subtitle="Xem danh sách đơn hàng thuộc sản phẩm của bạn, đồng thời tra cứu theo Order ID."
+      subtitle="Xem danh sách đơn hàng thuộc sản phẩm của bạn. Lọc theo mã đơn, buyer hoặc trạng thái."
       backPath="/seller"
       backLabel="Quay lại Seller Dashboard"
     />
@@ -972,7 +963,7 @@ export function StaffOrdersPage() {
   return (
     <ManageOrdersPage
       title="Manage Orders"
-      subtitle="Xem đầy đủ danh sách order toàn hệ thống, lọc trạng thái và tra cứu theo ID."
+      subtitle="Xem đầy đủ danh sách đơn hàng, lọc theo mã đơn, buyer hoặc trạng thái."
       backPath="/staff"
       backLabel="Quay lại Staff Dashboard"
     />
@@ -1013,6 +1004,15 @@ export function AdminDashboardPage() {
         <StatCard label="Products" value={products.length} />
         <StatCard label="Reviews" value={reviews.length} />
         <StatCard label="KYC Pending" value={pendingKyc} />
+      </div>
+      <div className="mt-6">
+        <Link to="/admin/reports" className="glass rounded-2xl p-5 flex items-center gap-3 hover:bg-white/80 transition-colors">
+          <span className="text-2xl">📊</span>
+          <div>
+            <p className="font-medium text-primary">Báo cáo</p>
+            <p className="text-sm text-text-muted">Xem tổng hợp và xuất báo cáo PDF/Excel</p>
+          </div>
+        </Link>
       </div>
     </PageShell>
   );
@@ -1155,38 +1155,302 @@ export function AdminUsersPage() {
   );
 }
 
+const REPORT_TYPES = [
+  { id: 'sales', label: 'Doanh số / Đơn hàng' },
+  { id: 'users', label: 'Người dùng' },
+  { id: 'products', label: 'Sản phẩm' },
+  { id: 'reviews', label: 'Đánh giá' },
+];
+
 export function AdminReportsPage() {
-  const [data, setData] = useState({ users: 0, products: 0, reviews: 0, pendingKyc: 0 });
+  const [reportType, setReportType] = useState('sales');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [status, setStatus] = useState('');
+  const [summary, setSummary] = useState(null);
+  const [detail, setDetail] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
+  const [showDetail, setShowDetail] = useState(false);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const filters = { fromDate: fromDate || undefined, toDate: toDate || undefined, status: status || undefined };
+
+  const loadSummary = async () => {
+    setLoadingSummary(true);
+    setMessage('');
+    try {
+      const res = await api.get('/admin/reports/summary', { params: { type: reportType, ...filters } });
+      setSummary(res.data?.data ?? null);
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Không tải được tổng quan.');
+      setSummary(null);
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
+  const loadDetail = async (page = 1) => {
+    setLoadingDetail(true);
+    setMessage('');
+    try {
+      const res = await api.get('/admin/reports/detail', {
+        params: { type: reportType, ...filters, page, limit: 20 },
+      });
+      setDetail(res.data?.data ?? { items: [], total: 0, page: 1, totalPages: 0 });
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Không tải được chi tiết.');
+      setDetail({ items: [], total: 0, page: 1, totalPages: 0 });
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [usersRes, productsRes, reviewsRes] = await Promise.all([
-          api.get('/admin/users', { params: { limit: 100 } }),
-          api.get('/products', { params: { limit: 100 } }),
-          api.get('/reviews', { params: { limit: 100 } }),
-        ]);
-        const users = usersRes.data?.data?.items || [];
-        setData({
-          users: users.length,
-          products: productsRes.data?.data?.items?.length || 0,
-          reviews: reviewsRes.data?.data?.items?.length || 0,
-          pendingKyc: users.filter((item) => item.sellerProfile?.kycStatus === 'PENDING').length,
-        });
-      } catch {
-        setData({ users: 0, products: 0, reviews: 0, pendingKyc: 0 });
+    loadSummary();
+  }, [reportType, fromDate, toDate, status]);
+
+  useEffect(() => {
+    if (showDetail) loadDetail(1);
+  }, [showDetail, reportType, fromDate, toDate, status]);
+
+  const handleApplyFilter = () => {
+    loadSummary();
+    if (showDetail) loadDetail(1);
+  };
+
+  const downloadExport = async (format) => {
+    const params = new URLSearchParams({ type: reportType });
+    if (fromDate) params.set('fromDate', fromDate);
+    if (toDate) params.set('toDate', toDate);
+    if (status) params.set('status', status);
+    try {
+      const res = await api.get(`/admin/reports/export/${format}?${params.toString()}`, { responseType: 'blob' });
+      if (res.status !== 200) {
+        const text = await (res.data instanceof Blob ? res.data.text() : Promise.resolve(String(res.data)));
+        let msg = `Không tải được file ${format}.`;
+        try {
+          const json = JSON.parse(text);
+          if (json.message) msg = json.message;
+        } catch (_) {}
+        setMessage(msg);
+        return;
       }
-    };
-    load();
-  }, []);
+      const blob = res.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report-${reportType}-${Date.now()}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      let msg = `Không tải được file ${format}.`;
+      const data = err.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text();
+          const json = JSON.parse(text);
+          if (json.message) msg = json.message;
+        } catch (_) {}
+      } else if (data?.message) {
+        msg = data.message;
+      }
+      setMessage(msg);
+    }
+  };
 
   return (
-    <PageShell title="Reports" subtitle="Báo cáo tổng hợp nhanh từ dữ liệu hệ thống hiện có.">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Users" value={data.users} />
-        <StatCard label="Products" value={data.products} />
-        <StatCard label="Reviews" value={data.reviews} />
-        <StatCard label="KYC Pending" value={data.pendingKyc} />
+    <PageShell title="Reports" subtitle="Báo cáo tổng hợp và xuất file PDF/Excel.">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <Link
+          to="/admin"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-black/15 text-xs uppercase tracking-[0.12em] hover:bg-white/80"
+        >
+          Quay lại Dashboard
+        </Link>
+      </div>
+
+      <div className="glass rounded-2xl p-5 mb-6">
+        <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Chọn loại báo cáo</h2>
+        <div className="flex flex-wrap gap-2">
+          {REPORT_TYPES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { setReportType(t.id); setShowDetail(false); }}
+              className={`px-4 py-2 rounded-full text-xs uppercase tracking-[0.12em] transition-colors ${reportType === t.id ? 'bg-primary text-white' : 'border border-black/15 hover:bg-white/80'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-5 mb-6">
+        <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Bộ lọc</h2>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-xs text-text-muted mb-1">Từ ngày</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-black/15 bg-white/70"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-text-muted mb-1">Đến ngày</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-black/15 bg-white/70"
+            />
+          </div>
+          {reportType === 'sales' && (
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Trạng thái đơn</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-black/15 bg-white/70"
+              >
+                <option value="">Tất cả</option>
+                <option value="PENDING">PENDING</option>
+                <option value="CONFIRMED">CONFIRMED</option>
+                <option value="SHIPPING">SHIPPING</option>
+                <option value="DELIVERED">DELIVERED</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleApplyFilter}
+            className="h-10 px-4 rounded-full bg-primary text-white text-xs uppercase tracking-[0.12em] hover:opacity-90"
+          >
+            Áp dụng
+          </button>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-5 mb-6">
+        <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Tổng quan</h2>
+        {loadingSummary && <p className="text-text-muted text-sm">Đang tải...</p>}
+        {!loadingSummary && summary && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <StatCard label={reportType === 'sales' ? 'Số đơn' : 'Số bản ghi'} value={summary.count ?? 0} />
+            {reportType === 'sales' && summary.totalAmount != null && (
+              <StatCard label="Tổng doanh thu (đ)" value={new Intl.NumberFormat('vi-VN').format(summary.totalAmount)} />
+            )}
+          </div>
+        )}
+        {message && <MessageBox type="error" text={message} />}
+      </div>
+
+      <div className="glass rounded-2xl p-5 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f]">Xem chi tiết báo cáo</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowDetail(!showDetail)}
+              className="px-4 py-2 rounded-full border border-black/15 text-xs uppercase tracking-[0.12em] hover:bg-white/80"
+            >
+              {showDetail ? 'Ẩn bảng chi tiết' : 'Hiện bảng chi tiết'}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadExport('excel')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-600 text-white text-xs uppercase tracking-[0.12em] hover:opacity-90"
+            >
+              Tải Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadExport('pdf')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-600 text-white text-xs uppercase tracking-[0.12em] hover:opacity-90"
+            >
+              Tải PDF
+            </button>
+          </div>
+        </div>
+        {showDetail && (
+          <>
+            {loadingDetail && <p className="text-text-muted text-sm">Đang tải chi tiết...</p>}
+            {!loadingDetail && detail.items.length === 0 && <EmptyState text="Không có dữ liệu chi tiết." />}
+            {!loadingDetail && detail.items.length > 0 && (
+              <div className="overflow-x-auto">
+                {reportType === 'sales' && (
+                  <DataTable
+                    columns={['STT', 'Người mua', 'Email', 'Tổng tiền', 'Trạng thái', 'Ngày tạo']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.id} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3">{row.buyerName}</td>
+                        <td className="py-2 pr-3 text-sm">{row.buyerEmail}</td>
+                        <td className="py-2 pr-3">{currency(row.totalAmount)}</td>
+                        <td className="py-2 pr-3">{row.status}</td>
+                        <td className="py-2 pr-3">{formatDate(row.createdAt)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+                {reportType === 'users' && (
+                  <DataTable
+                    columns={['STT', 'Email', 'Họ tên', 'Điện thoại', 'Role', 'Cửa hàng', 'KYC', 'Ngày tạo']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.id} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3">{row.email}</td>
+                        <td className="py-2 pr-3">{row.fullName}</td>
+                        <td className="py-2 pr-3">{row.phone}</td>
+                        <td className="py-2 pr-3">{row.role}</td>
+                        <td className="py-2 pr-3">{row.shopName || '--'}</td>
+                        <td className="py-2 pr-3">{row.kycStatus || '--'}</td>
+                        <td className="py-2 pr-3">{formatDate(row.createdAt)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+                {reportType === 'products' && (
+                  <DataTable
+                    columns={['STT', 'Tên', 'Slug', 'Giá', 'Sale', 'Tồn kho', 'Active', 'Ngày tạo']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.id} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3">{row.name}</td>
+                        <td className="py-2 pr-3 text-xs">{row.slug}</td>
+                        <td className="py-2 pr-3">{currency(row.price)}</td>
+                        <td className="py-2 pr-3">{row.salePrice != null ? currency(row.salePrice) : '--'}</td>
+                        <td className="py-2 pr-3">{row.stock}</td>
+                        <td className="py-2 pr-3">{row.isActive ? 'Có' : 'Không'}</td>
+                        <td className="py-2 pr-3">{formatDate(row.createdAt)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+                {reportType === 'reviews' && (
+                  <DataTable
+                    columns={['STT', 'Điểm', 'Bình luận', 'Người đánh giá', 'Sản phẩm', 'Ngày tạo']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.id} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3">{row.rating}</td>
+                        <td className="py-2 pr-3 max-w-[200px] truncate">{row.comment || '--'}</td>
+                        <td className="py-2 pr-3">{row.userName}</td>
+                        <td className="py-2 pr-3">{row.productName}</td>
+                        <td className="py-2 pr-3">{formatDate(row.createdAt)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </PageShell>
   );

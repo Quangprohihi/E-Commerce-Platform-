@@ -26,7 +26,19 @@ async function vnpayReturn(req, res, next) {
       return redirectResult(res, 'fail', null, 'Xac thuc chu ky that bai');
     }
     const orderId = verify.vnp_TxnRef || req.query.vnp_TxnRef;
-    if (verify.isSuccess) {
+    if (verify.isSuccess && orderId) {
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (order && order.status === 'PENDING') {
+        const receivedAmount = Number(verify.vnp_Amount ?? req.query.vnp_Amount);
+        const expectedAmount = Number(order.totalAmount);
+        if (!Number.isNaN(receivedAmount) && !Number.isNaN(expectedAmount) && Math.abs(receivedAmount - expectedAmount) <= 1) {
+          const vnpTransactionNo = verify.vnp_TransactionNo ?? req.query.vnp_TransactionNo ?? null;
+          await prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CONFIRMED', vnpTransactionNo },
+          });
+        }
+      }
       return redirectResult(res, 'success', orderId);
     }
     return redirectResult(res, 'fail', orderId, verify.message || 'Thanh toan that bai');
