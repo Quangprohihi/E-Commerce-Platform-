@@ -92,6 +92,11 @@ export default function ComparePage() {
   };
 
   if (ids.length < 2) {
+    const hasOne = ids.length === 1;
+    const handleRemoveLast = () => {
+      if (ids[0]) removeFromCompare(ids[0]);
+      setIds(getCompareIds());
+    };
     return (
       <div className="min-h-screen pt-24 pb-16">
         <div className="max-w-310 mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -100,13 +105,28 @@ export default function ComparePage() {
           </div>
           <h1 className="font-serif text-2xl font-semibold text-primary mb-2">So sánh sản phẩm</h1>
           <p className="text-text-muted mb-6">Chọn 2 hoặc 3 sản phẩm để so sánh bằng AI.</p>
-          <Link
-            to="/products"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-soft transition-colors"
-          >
-            <ArrowLeft size={18} strokeWidth={1.5} />
-            Xem sản phẩm
-          </Link>
+          {hasOne ? (
+            <p className="text-sm text-primary/80 mb-4">Bạn đang có 1 sản phẩm trong danh sách so sánh. Gỡ để so sánh bộ khác.</p>
+          ) : null}
+          <div className="flex flex-wrap justify-center gap-3">
+            {hasOne ? (
+              <button
+                type="button"
+                onClick={handleRemoveLast}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-black/15 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
+              >
+                <X size={18} strokeWidth={1.5} />
+                Gỡ sản phẩm này
+              </button>
+            ) : null}
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-soft transition-colors"
+            >
+              <ArrowLeft size={18} strokeWidth={1.5} />
+              Xem sản phẩm
+            </Link>
+          </div>
         </div>
       </div>
     );
