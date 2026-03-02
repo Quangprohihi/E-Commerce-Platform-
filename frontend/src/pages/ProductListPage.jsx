@@ -1,22 +1,27 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Filter, SlidersHorizontal, X } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Filter, SlidersHorizontal, X, Search } from 'lucide-react';
 import ProductCard from '../components/ui/ProductCard';
 import { ProductCardSkeleton } from '../components/ui/SkeletonLoader';
 import api from '../services/api';
 import { filterMockProducts, mockProducts, sortProducts } from '../data/mockProducts';
 import { addToCompare } from './ComparePage';
+import { ATTR_TRANSLATIONS, translateAttr } from '../utils/translations';
 
 export default function ProductListPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [data, setData] = useState({ items: [], total: 0, isFallback: false });
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState(searchParams.get('sort') || 'newest');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [localSearch, setLocalSearch] = useState(searchParams.get('search') || '');
 
   const filters = {
     frameShape: searchParams.get('frameShape') || '',
     frameMaterial: searchParams.get('frameMaterial') || '',
+    lensType: searchParams.get('lensType') || '',
+    gender: searchParams.get('gender') || '',
     condition: searchParams.get('condition') || '',
     categoryId: searchParams.get('categoryId') || '',
     minPrice: searchParams.get('minPrice') || '',
@@ -28,6 +33,8 @@ export default function ProductListPage() {
     const params = new URLSearchParams();
     if (filters.frameShape) params.set('frameShape', filters.frameShape);
     if (filters.frameMaterial) params.set('frameMaterial', filters.frameMaterial);
+    if (filters.lensType) params.set('lensType', filters.lensType);
+    if (filters.gender) params.set('gender', filters.gender);
     if (filters.condition) params.set('condition', filters.condition);
     if (filters.categoryId) params.set('categoryId', filters.categoryId);
     if (filters.minPrice) params.set('minPrice', filters.minPrice);
@@ -52,14 +59,44 @@ export default function ProductListPage() {
       .finally(() => setLoading(false));
   }, [searchParams, sortBy]);
 
+  useEffect(() => {
+    setLocalSearch(searchParams.get('search') || '');
+  }, [searchParams]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const params = new URLSearchParams(searchParams);
+    if (localSearch.trim()) {
+      params.set('search', localSearch.trim());
+    } else {
+      params.delete('search');
+    }
+    navigate(`/products?${params.toString()}`);
+  };
+
   const filterOptions = [
-    { key: 'frameShape', label: 'Frame Shape', values: ['ROUND', 'SQUARE', 'RECTANGLE', 'OVAL', 'CAT_EYE', 'AVIATOR'] },
-    { key: 'frameMaterial', label: 'Frame Material', values: ['METAL', 'ACETATE', 'TITANIUM', 'PLASTIC', 'WOOD'] },
-    { key: 'condition', label: 'Condition', values: ['NEW', 'LIKE_NEW', 'USED'] },
+    { key: 'frameShape', label: 'Hình dáng gọng', values: Object.keys(ATTR_TRANSLATIONS.frameShape) },
+    { key: 'frameMaterial', label: 'Chất liệu gọng', values: Object.keys(ATTR_TRANSLATIONS.frameMaterial) },
+    { key: 'lensType', label: 'Loại tròng kính', values: Object.keys(ATTR_TRANSLATIONS.lensType) },
+    { key: 'gender', label: 'Giới tính', values: Object.keys(ATTR_TRANSLATIONS.gender) },
+    { key: 'condition', label: 'Tình trạng', values: Object.keys(ATTR_TRANSLATIONS.condition) },
   ];
 
   const FilterContent = () => (
     <div className="space-y-6">
+      <form onSubmit={handleSearchSubmit} className="relative">
+        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+          <Search size={16} className="text-[#a8a196]" />
+        </div>
+        <input
+          type="text"
+          value={localSearch}
+          onChange={(e) => setLocalSearch(e.target.value)}
+          placeholder="Tìm sản phẩm..."
+          className="w-full bg-white/70 border border-black/10 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary/30"
+        />
+      </form>
+
       {filterOptions.map((group) => (
         <div key={group.key}>
           <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f] mb-3">{group.label}</p>
@@ -78,7 +115,7 @@ export default function ProductListPage() {
                       : 'bg-white/60 border-black/10 text-primary hover:border-black/25'
                   }`}
                 >
-                  {value}
+                  {translateAttr(group.key, value)}
                 </Link>
               );
             })}

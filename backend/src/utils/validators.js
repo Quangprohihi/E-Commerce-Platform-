@@ -3,11 +3,14 @@ function isValidEmail(email) {
 }
 
 function validateRegister(body) {
-  const { email, password, fullName } = body || {};
+  const { email, password, fullName, role } = body || {};
   if (!email || !password || !fullName) return { ok: false, message: 'Thiếu email, mật khẩu hoặc họ tên' };
   if (!isValidEmail(email)) return { ok: false, message: 'Email không hợp lệ' };
   if (password.length < 6) return { ok: false, message: 'Mật khẩu tối thiểu 6 ký tự' };
-  return { ok: true, data: { email, password, fullName, phone: body.phone } };
+
+  const finalRole = (role === 'SELLER') ? 'SELLER' : 'BUYER';
+
+  return { ok: true, data: { email, password, fullName, role: finalRole, phone: body.phone } };
 }
 
 function validateLogin(body) {

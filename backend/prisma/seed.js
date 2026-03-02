@@ -116,14 +116,14 @@ async function main() {
     img3: ['https://images.unsplash.com/photo-1625591339971-4f35f419f2fa?auto=format&fit=crop&w=1200&q=80'],
     img4: ['https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=1200&q=80'],
     img5: ['https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=1200&q=80'],
-    img6: ['https://images.unsplash.com/photo-1516515429572-bf32372f2409?auto=format&fit=crop&w=1200&q=80'],
-    img7: ['https://images.unsplash.com/photo-1615461066159-fea0960485d5?auto=format&fit=crop&w=1200&q=80'],
-    img8: ['https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=80'],
+    img6: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420892/kinhtot_products/l69fiwtss9jz9lpjppph.png'],
+    img7: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420890/kinhtot_products/orbwrcexbumum2pwcmsu.png'],
+    img8: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420894/kinhtot_products/ki6ons3t6fuvbmzpramp.png'],
     img9: ['https://images.unsplash.com/photo-1574258495973-f010dfbb5371?auto=format&fit=crop&w=1200&q=80'],
     img10: ['https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=1200&q=80'],
-    img11: ['https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=1200&q=80'],
-    img12: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80'],
-    img13: ['https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&w=1200&q=80'],
+    img11: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420890/kinhtot_products/orbwrcexbumum2pwcmsu.png'],
+    img12: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420892/kinhtot_products/l69fiwtss9jz9lpjppph.png'],
+    img13: ['https://res.cloudinary.com/dhnwl0xvf/image/upload/v1772420893/kinhtot_products/f8bwagqttc81mcfpxoki.png'],
     img14: ['https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&w=1200&q=80'],
   };
 
@@ -413,7 +413,7 @@ async function main() {
     },
   });
 
-  
+
   await prisma.product.create({
     data: {
       sellerId: seller.id,

@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { getRoleHomePath } from '../utils/auth';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [form, setForm] = useState({
     fullName: '',
     email: '',
     phone: '',
     password: '',
     confirmPassword: '',
+    role: 'BUYER',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,12 +41,12 @@ export default function RegisterPage() {
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
         password: form.password,
+        role: form.role,
       };
       const res = await api.post('/auth/register', payload);
       const data = res.data?.data || {};
-      if (data.token) localStorage.setItem('token', data.token);
-      if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user));
-      navigate('/');
+      login(data.user, data.token);
+      navigate(getRoleHomePath(data.user?.role), { replace: true });
     } catch (err) {
       const message = err.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
       setError(message);
@@ -58,6 +62,39 @@ export default function RegisterPage() {
         <h1 className="font-serif text-3xl mb-6">Tạo tài khoản</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <label
+              className={`flex items-center justify-center p-3 rounded-2xl border cursor-pointer transition-all ${
+                form.role === 'BUYER' ? 'bg-primary border-primary text-white' : 'bg-white/60 border-black/10 text-text-muted hover:border-black/30'
+              }`}
+            >
+              <input
+                type="radio"
+                name="role"
+                value="BUYER"
+                checked={form.role === 'BUYER'}
+                onChange={() => handleChange('role', 'BUYER')}
+                className="sr-only"
+              />
+              <span className="text-sm font-medium tracking-wide">Người Mua Hàng</span>
+            </label>
+            <label
+              className={`flex items-center justify-center p-3 rounded-2xl border cursor-pointer transition-all ${
+                form.role === 'SELLER' ? 'bg-primary border-primary text-white' : 'bg-white/60 border-black/10 text-text-muted hover:border-black/30'
+              }`}
+            >
+              <input
+                type="radio"
+                name="role"
+                value="SELLER"
+                checked={form.role === 'SELLER'}
+                onChange={() => handleChange('role', 'SELLER')}
+                className="sr-only"
+              />
+              <span className="text-sm font-medium tracking-wide">Nhà Bán Hàng</span>
+            </label>
+          </div>
+
           <div>
             <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-2" htmlFor="fullName">
               Họ và tên

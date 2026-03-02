@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { ATTR_TRANSLATIONS, translateAttr } from '../utils/translations';
 
 function formatDate(value) {
   if (!value) return '--';
@@ -240,6 +241,7 @@ export function SellerProductsPage() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState('');
+  const [editingProduct, setEditingProduct] = useState(null);
   const [creating, setCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState('');
   const [createError, setCreateError] = useState('');
@@ -252,6 +254,10 @@ export function SellerProductsPage() {
     salePrice: '',
     stock: '0',
     condition: 'NEW',
+    frameShape: 'ROUND',
+    frameMaterial: 'METAL',
+    lensType: 'SINGLE_VISION',
+    gender: 'UNISEX',
   });
 
   const categoryOptions = useMemo(() => {
@@ -291,12 +297,54 @@ export function SellerProductsPage() {
   }, [user?.id]);
 
   const handleDelete = async (id) => {
+    if (!window.confirm('Bạn có chắc muốn xóa sản phẩm này không?')) return;
     try {
       await api.delete(`/products/${id}`);
       await loadProducts();
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể xóa sản phẩm.');
     }
+  };
+
+  const handleEditClick = (product) => {
+    setEditingProduct(product);
+    setCreateMessage('');
+    setCreateError('');
+    setImageFile(null);
+    setForm({
+      name: product.name || '',
+      categoryId: product.categoryId || '',
+      description: product.description || '',
+      price: product.price?.toString() || '',
+      salePrice: product.salePrice?.toString() || '',
+      stock: product.stock?.toString() || '0',
+      condition: product.condition || 'NEW',
+      frameShape: product.frameShape || 'ROUND',
+      frameMaterial: product.frameMaterial || 'METAL',
+      lensType: product.lensType || 'SINGLE_VISION',
+      gender: product.gender || 'UNISEX',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingProduct(null);
+    setCreateMessage('');
+    setCreateError('');
+    setImageFile(null);
+    setForm({
+      name: '',
+      categoryId: categoryOptions[0]?.id || '',
+      description: '',
+      price: '',
+      salePrice: '',
+      stock: '0',
+      condition: 'NEW',
+      frameShape: 'ROUND',
+      frameMaterial: 'METAL',
+      lensType: 'SINGLE_VISION',
+      gender: 'UNISEX',
+    });
   };
 
   const handleCreateProduct = async (event) => {
@@ -306,25 +354,28 @@ export function SellerProductsPage() {
     setCreateMessage('');
 
     try {
-      if (!imageFile) {
+      let imageUrl = editingProduct?.images?.[0] || null;
+
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+
+        const uploadRes = await api.post('/products/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        imageUrl = uploadRes.data?.data?.url;
+        if (!imageUrl) {
+          throw new Error('Upload ảnh thất bại: không nhận được URL từ Cloudinary.');
+        }
+      } else if (!editingProduct && !imageFile) {
         throw new Error('Vui lòng chọn ảnh sản phẩm trước khi tạo.');
       }
+
       if (!form.categoryId) {
         throw new Error('Thiếu categoryId. Hãy chọn hoặc nhập categoryId hợp lệ.');
       }
 
-      const formData = new FormData();
-      formData.append('image', imageFile);
-
-      const uploadRes = await api.post('/products/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const imageUrl = uploadRes.data?.data?.url;
-      if (!imageUrl) {
-        throw new Error('Upload ảnh thất bại: không nhận được URL từ Cloudinary.');
-      }
-
-      await api.post('/products', {
+      const payload = {
         name: form.name,
         categoryId: form.categoryId,
         description: form.description || null,
@@ -332,23 +383,45 @@ export function SellerProductsPage() {
         salePrice: form.salePrice ? Number(form.salePrice) : null,
         stock: Number(form.stock || 0),
         condition: form.condition,
-        images: [imageUrl],
-      });
+        frameShape: form.frameShape,
+        frameMaterial: form.frameMaterial,
+        lensType: form.lensType,
+        gender: form.gender,
+      };
 
-      setCreateMessage('Tạo sản phẩm thành công. Ảnh đã upload lên Cloudinary.');
+      if (imageUrl) {
+        payload.images = [imageUrl];
+      }
+
+      if (editingProduct) {
+        await api.put(`/products/${editingProduct.id}`, payload);
+        setCreateMessage('Cập nhật sản phẩm thành công.');
+      } else {
+        await api.post('/products', payload);
+        setCreateMessage('Tạo sản phẩm thành công. Ảnh đã upload lên Cloudinary.');
+      }
       setImageFile(null);
-      setForm((prev) => ({
-        ...prev,
-        name: '',
-        description: '',
-        price: '',
-        salePrice: '',
-        stock: '0',
-        condition: 'NEW',
-      }));
+      if (!editingProduct) {
+        setForm((prev) => ({
+          ...prev,
+          name: '',
+          description: '',
+          price: '',
+          salePrice: '',
+          stock: '0',
+          condition: 'NEW',
+          frameShape: 'ROUND',
+          frameMaterial: 'METAL',
+          lensType: 'SINGLE_VISION',
+          gender: 'UNISEX',
+        }));
+      } else {
+        setEditingProduct(null);
+        cancelEdit();
+      }
       await loadProducts();
     } catch (err) {
-      setCreateError(err.response?.data?.message || err.message || 'Không thể tạo sản phẩm.');
+      setCreateError(err.response?.data?.message || err.message || (editingProduct ? 'Không thể cập nhật sản phẩm.' : 'Không thể tạo sản phẩm.'));
     } finally {
       setCreating(false);
     }
@@ -365,8 +438,23 @@ export function SellerProductsPage() {
         </Link>
       </div>
 
-      <SectionCard title="Tạo sản phẩm mới (Cloudinary Upload)">
-        <form onSubmit={handleCreateProduct} className="space-y-4">
+      {user?.sellerProfile?.kycStatus !== 'APPROVED' ? (
+        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-6 flex flex-col items-center justify-center text-center">
+          <p className="text-amber-800 font-medium text-lg">Tài khoản chưa được phê duyệt</p>
+          <p className="text-amber-700/80 text-sm mt-2 max-w-lg">
+            Cửa hàng của bạn đang trong trạng thái "{user?.sellerProfile?.kycStatus || 'Chưa đăng ký KYC'}".
+            Vui lòng gửi hồ sơ ở trang <strong>KYC Seller</strong> và chờ Quản trị viên phê duyệt trước khi đăng bán sản phẩm.
+          </p>
+          <Link
+            to="/seller/kyc"
+            className="mt-4 px-6 py-2 rounded-full bg-amber-600 text-white hover:bg-amber-700 font-medium text-sm transition-colors"
+          >
+            Đi tới trang hồ sơ KYC
+          </Link>
+        </div>
+      ) : (
+        <SectionCard title={editingProduct ? 'Chỉnh sửa sản phẩm' : 'Tạo sản phẩm mới (Cloudinary Upload)'}>
+          <form onSubmit={handleCreateProduct} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input
               value={form.name}
@@ -439,9 +527,48 @@ export function SellerProductsPage() {
               onChange={(event) => setForm((prev) => ({ ...prev, condition: event.target.value }))}
               className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
             >
-              <option value="NEW">NEW</option>
-              <option value="LIKE_NEW">LIKE_NEW</option>
-              <option value="USED">USED</option>
+              {Object.keys(ATTR_TRANSLATIONS.condition).map(k => (
+                <option key={k} value={k}>{translateAttr('condition', k)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <select
+              value={form.frameShape}
+              onChange={(event) => setForm((prev) => ({ ...prev, frameShape: event.target.value }))}
+              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+            >
+              {Object.keys(ATTR_TRANSLATIONS.frameShape).map(k => (
+                <option key={k} value={k}>{translateAttr('frameShape', k)}</option>
+              ))}
+            </select>
+            <select
+              value={form.frameMaterial}
+              onChange={(event) => setForm((prev) => ({ ...prev, frameMaterial: event.target.value }))}
+              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+            >
+              {Object.keys(ATTR_TRANSLATIONS.frameMaterial).map(k => (
+                <option key={k} value={k}>{translateAttr('frameMaterial', k)}</option>
+              ))}
+            </select>
+            <select
+              value={form.lensType}
+              onChange={(event) => setForm((prev) => ({ ...prev, lensType: event.target.value }))}
+              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+            >
+              {Object.keys(ATTR_TRANSLATIONS.lensType).map(k => (
+                <option key={k} value={k}>{translateAttr('lensType', k)}</option>
+              ))}
+            </select>
+            <select
+              value={form.gender}
+              onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
+              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+            >
+              {Object.keys(ATTR_TRANSLATIONS.gender).map(k => (
+                <option key={k} value={k}>{translateAttr('gender', k)}</option>
+              ))}
             </select>
           </div>
 
@@ -451,23 +578,37 @@ export function SellerProductsPage() {
               accept="image/*"
               onChange={(event) => setImageFile(event.target.files?.[0] || null)}
               className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-              required
+              required={!editingProduct}
             />
-            <p className="text-xs text-text-muted mt-2">Ảnh sẽ được upload lên Cloudinary (free tier), sau đó lưu URL vào DB.</p>
+            <p className="text-xs text-text-muted mt-2">
+              {editingProduct ? 'Chọn ảnh mới nếu muốn thay ảnh hiện tại. Không chọn nếu giữ nguyên ảnh cũ.' : 'Ảnh sẽ được upload lên Cloudinary (free tier), sau đó lưu URL vào DB.'}
+            </p>
           </div>
 
           {createError ? <MessageBox type="error" text={createError} /> : null}
           {createMessage ? <MessageBox type="success" text={createMessage} /> : null}
 
-          <button
-            type="submit"
-            disabled={creating}
-            className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60"
-          >
-            {creating ? 'Đang tạo...' : 'Tạo sản phẩm'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={creating}
+              className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60"
+            >
+              {creating ? 'Đang lưu...' : (editingProduct ? 'Cập nhật sản phẩm' : 'Tạo sản phẩm')}
+            </button>
+            {editingProduct && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="h-11 px-5 rounded-xl border border-black/20 text-xs uppercase tracking-[0.12em] hover:bg-white/70"
+              >
+                Hủy thay đổi
+              </button>
+            )}
+          </div>
         </form>
       </SectionCard>
+      )}
 
       <SectionCard title="Danh sách sản phẩm" action={<button type="button" onClick={loadProducts} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}>
         {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
@@ -482,8 +623,11 @@ export function SellerProductsPage() {
                 <td className="py-3 pr-3">{currency(product.salePrice ?? product.price)}</td>
                 <td className="py-3 pr-3">{product.stock}</td>
                 <td className="py-3 pr-3">{product.category?.name || '--'}</td>
-                <td className="py-3 pr-3">
-                  <button type="button" onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-700 text-xs uppercase tracking-widest">Xóa</button>
+                <td className="py-3 pr-3 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <button type="button" onClick={() => handleEditClick(product)} className="text-blue-600 hover:text-blue-700 text-xs uppercase tracking-widest font-medium">Sửa</button>
+                    <button type="button" onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-700 text-xs uppercase tracking-widest font-medium">Xóa</button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -781,9 +925,11 @@ export function SellerKycPage() {
 export function StaffDashboardPage() {
   return (
     <PageShell title="Staff Dashboard" subtitle="Vận hành hệ thống: khách hàng, seller, sản phẩm, feedback và đơn hàng.">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/staff/customers" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Customer</p></Link>
-        <Link to="/staff/sellers" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Seller</p></Link>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Link to="/admin/kyc" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Duyệt KYC Seller</p></Link>
+        <Link to="/admin/users" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Quản lý người dùng</p></Link>
+        <Link to="/admin/reports" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Báo cáo & Thống kê</p></Link>
+        <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p></Link>
         <Link to="/staff/products" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Products</p></Link>
         <Link to="/staff/reviews" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Feedback</p></Link>
         <Link to="/staff/orders" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Orders</p></Link>
@@ -1018,75 +1164,6 @@ export function AdminDashboardPage() {
   );
 }
 
-export function AdminKycPage() {
-  const [loading, setLoading] = useState(true);
-  const [sellers, setSellers] = useState([]);
-  const [message, setMessage] = useState('');
-
-  const loadSellers = async () => {
-    setLoading(true);
-    setMessage('');
-    try {
-      const response = await api.get('/admin/users', { params: { role: 'SELLER', limit: 100 } });
-      setSellers(response.data?.data?.items || []);
-    } catch (err) {
-      setMessage(err.response?.data?.message || 'Không thể tải danh sách seller.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadSellers();
-  }, []);
-
-  const updateKyc = async (userId, currentProfile, nextStatus) => {
-    setMessage('');
-    try {
-      await api.patch(`/admin/users/${userId}`, {
-        sellerProfile: {
-          shopName: currentProfile?.shopName || 'Cửa hàng',
-          description: currentProfile?.description || '',
-          kycDocument: currentProfile?.kycDocument || null,
-          kycStatus: nextStatus,
-        },
-      });
-      setMessage(`Cập nhật KYC thành công: ${nextStatus}`);
-      await loadSellers();
-    } catch (err) {
-      setMessage(err.response?.data?.message || 'Không thể cập nhật KYC.');
-    }
-  };
-
-  return (
-    <PageShell title="Duyệt KYC" subtitle="Phê duyệt hoặc từ chối hồ sơ KYC của seller.">
-      <SectionCard title="Seller cần duyệt" action={<button type="button" onClick={loadSellers} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}>
-        {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
-        {!loading && sellers.length === 0 ? <EmptyState text="Không có seller nào." /> : null}
-        {message ? <MessageBox type={message.includes('thành công') ? 'success' : 'error'} text={message} /> : null}
-        {!loading && sellers.length > 0 ? (
-          <DataTable
-            columns={['Seller', 'Email', 'Shop', 'KYC', 'Thao tác']}
-            rows={sellers.map((item) => (
-              <tr key={item.id} className="border-b border-black/5">
-                <td className="py-3 pr-3">{item.fullName}</td>
-                <td className="py-3 pr-3">{item.email}</td>
-                <td className="py-3 pr-3">{item.sellerProfile?.shopName || '--'}</td>
-                <td className="py-3 pr-3">{item.sellerProfile?.kycStatus || 'PENDING'}</td>
-                <td className="py-3 pr-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => updateKyc(item.id, item.sellerProfile, 'APPROVED')} className="h-8 px-3 rounded-full border border-emerald-300 text-emerald-700 text-xs">Approve</button>
-                    <button type="button" onClick={() => updateKyc(item.id, item.sellerProfile, 'REJECTED')} className="h-8 px-3 rounded-full border border-red-300 text-red-700 text-xs">Reject</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          />
-        ) : null}
-      </SectionCard>
-    </PageShell>
-  );
-}
 
 export function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
@@ -1452,6 +1529,140 @@ export function AdminReportsPage() {
           </>
         )}
       </div>
+    </PageShell>
+  );
+}
+
+export function AdminKycPage() {
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState([]);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+
+  const loadSellers = async (nextPage = page) => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.get('/admin/users', {
+        params: {
+          role: 'SELLER',
+          page: nextPage,
+          limit: meta.limit,
+          search: search || undefined,
+        },
+      });
+      const payload = response.data?.data || {};
+      let items = payload.items || [];
+      if (statusFilter) {
+        items = items.filter(u => (u.sellerProfile?.kycStatus || 'PENDING') === statusFilter);
+      }
+      setUsers(items);
+      setMeta({
+        total: payload.total || 0,
+        totalPages: payload.totalPages || 1,
+        limit: payload.limit || meta.limit,
+      });
+      setPage(payload.page || nextPage);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể tải danh sách seller.');
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setPage(1);
+    loadSellers(1);
+  }, [statusFilter]);
+
+  const applySearch = () => {
+    setPage(1);
+    loadSellers(1);
+  };
+
+  const updateKycStatus = async (userId, newStatus) => {
+    if (!window.confirm(`Xác nhận chuyển KYC sang ${newStatus}?`)) return;
+    try {
+      await api.patch(`/admin/users/${userId}`, {
+        sellerProfile: { kycStatus: newStatus },
+      });
+      await loadSellers(page);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Lỗi cập nhật KYC');
+    }
+  };
+
+  return (
+    <PageShell title="Duyệt KYC Seller" subtitle="Xem và phê duyệt hồ sơ bán hàng của Seller.">
+      <SectionCard
+        title="Danh sách Seller"
+        action={
+          <button type="button" onClick={() => loadSellers(page)} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">
+            Refresh
+          </button>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && applySearch()}
+            placeholder="Tìm theo email, tên, SĐT"
+            className="flex-1 min-w-[200px] h-10 px-4 rounded-xl border border-black/10 bg-white/70"
+          />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 px-3 rounded-xl border border-black/10 bg-white/70">
+            <option value="">Tất cả trạng thái KYC</option>
+            <option value="PENDING">PENDING</option>
+            <option value="APPROVED">APPROVED</option>
+            <option value="REJECTED">REJECTED</option>
+          </select>
+          <button type="button" onClick={applySearch} className="h-10 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em]">
+            Tìm
+          </button>
+        </div>
+
+        {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
+        {error ? <MessageBox type="error" text={error} /> : null}
+        {!loading && !error && users.length === 0 ? <EmptyState text="Không có seller nào phù hợp." /> : null}
+        
+        {!loading && users.length > 0 ? (
+          <DataTable
+            columns={['Email', 'Họ tên', 'Trạng thái KYC', 'Tên Shop', 'Thao tác']}
+            rows={users.map((u) => {
+              const kyc = u.sellerProfile?.kycStatus || 'PENDING';
+              return (
+                <tr key={u.id} className="border-b border-black/5">
+                  <td className="py-3 pr-3">{u.email}</td>
+                  <td className="py-3 pr-3">{u.fullName}</td>
+                  <td className="py-3 pr-3">
+                    <span className={`px-2 py-1 text-xs font-bold rounded-lg ${
+                      kyc === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                      kyc === 'REJECTED' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {kyc}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-3 text-sm">{u.sellerProfile?.shopName || '--'}</td>
+                  <td className="py-3 pr-3">
+                    <div className="flex items-center gap-2">
+                      {kyc !== 'APPROVED' && (
+                        <button type="button" onClick={() => updateKycStatus(u.id, 'APPROVED')} className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">Duyệt</button>
+                      )}
+                      {kyc !== 'REJECTED' && (
+                        <button type="button" onClick={() => updateKycStatus(u.id, 'REJECTED')} className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700">Từ chối</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          />
+        ) : null}
+      </SectionCard>
     </PageShell>
   );
 }

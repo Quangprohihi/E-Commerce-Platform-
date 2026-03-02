@@ -124,9 +124,14 @@ async function ensureSellerExists(sellerId) {
   const seller = await prisma.user.findUnique({
     where: { id: sellerId },
     select: { id: true, role: true },
+    include: { sellerProfile: true },
   });
   if (!seller || seller.role !== 'SELLER') {
     throw Object.assign(new Error('Seller không hợp lệ'), { statusCode: 400 });
+  }
+
+  if (!seller.sellerProfile || seller.sellerProfile.kycStatus !== 'APPROVED') {
+    throw Object.assign(new Error('Tài khoản Seller chưa được duyệt KYC. Hãy hoàn tất thủ tục để có thể đăng bán sản phẩm.'), { statusCode: 403 });
   }
 }
 
