@@ -104,4 +104,24 @@ async function updateUserById(targetUserId, body = {}, actorRole) {
   return getUserById(targetUserId);
 }
 
-module.exports = { listUsers, getUserById, updateUserById };
+async function deleteUserById(targetUserId, actorId, actorRole) {
+  if (actorRole !== 'ADMIN') {
+    throw Object.assign(new Error('Chỉ admin mới được xóa người dùng'), { statusCode: 403 });
+  }
+  if (targetUserId === actorId) {
+    throw Object.assign(new Error('Không thể xóa chính tài khoản của bạn'), { statusCode: 400 });
+  }
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { id: true },
+  });
+  if (!target) {
+    throw Object.assign(new Error('Người dùng không tồn tại'), { statusCode: 404 });
+  }
+  await prisma.user.delete({
+    where: { id: targetUserId },
+  });
+  return { deleted: true, id: targetUserId };
+}
+
+module.exports = { listUsers, getUserById, updateUserById, deleteUserById };

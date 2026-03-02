@@ -10,6 +10,7 @@ router.use(authMiddleware, requireRole('STAFF', 'ADMIN'));
 router.get('/users', adminController.listUsers);
 router.get('/users/:id', adminController.getUserById);
 router.patch('/users/:id', adminController.updateUserById);
+router.delete('/users/:id', adminController.deleteUserById);
 
 router.get('/reports/summary', reportController.getSummary);
 router.get('/reports/detail', reportController.getDetail);

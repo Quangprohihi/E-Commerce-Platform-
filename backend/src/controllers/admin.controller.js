@@ -28,4 +28,13 @@ async function updateUserById(req, res, next) {
   }
 }
 
-module.exports = { listUsers, getUserById, updateUserById };
+async function deleteUserById(req, res, next) {
+  try {
+    const data = await adminService.deleteUserById(req.params.id, req.user.id, req.user.role);
+    return sendSuccess(res, 'Đã xóa người dùng', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listUsers, getUserById, updateUserById, deleteUserById };
