@@ -3,7 +3,7 @@ const prisma = require('../config/prisma');
 const { sign } = require('../utils/jwt');
 
 async function register(data) {
-  const { email, password, fullName, phone } = data;
+  const { email, password, fullName, phone, role } = data;
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) throw Object.assign(new Error('Email đã được sử dụng'), { statusCode: 400 });
   const hashed = bcrypt.hashSync(password, 10);
@@ -13,7 +13,7 @@ async function register(data) {
       password: hashed,
       fullName,
       phone: phone || null,
-      role: 'BUYER',
+      role: role || 'BUYER',
     },
     select: { id: true, email: true, fullName: true, role: true, phone: true, avatar: true, createdAt: true },
   });

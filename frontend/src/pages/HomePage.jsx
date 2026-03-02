@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Sparkles, Search, ShieldCheck, CheckCircle, Award, Sun, Glasses, RefreshCw, Monitor, Circle, Wrench } from 'lucide-react';
 import ProductCard from '../components/ui/ProductCard';
 import api from '../services/api';
@@ -21,7 +21,16 @@ export default function HomePage() {
   const [usedProducts, setUsedProducts] = useState([]);
   const [isFallback, setIsFallback] = useState(false);
   const [homeStats, setHomeStats] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const usedRef = useRef(null);
+  const navigate = useNavigate();
+
+  const handleSearch = (e) => {
+    e?.preventDefault();
+    const q = (searchQuery || '').trim();
+    if (q) navigate(`/products?search=${encodeURIComponent(q)}`);
+    else navigate('/products');
+  };
 
   useEffect(() => {
     api.get('/stats/home').then((res) => setHomeStats(res.data?.data ?? null)).catch(() => setHomeStats(null));
@@ -80,21 +89,23 @@ export default function HomePage() {
               <p className="max-w-xl text-[#6f6961] text-base md:text-lg">
                 Định hình phong cách cùng bộ sưu tập kính mắt thời thượng. Từ gọng kính thanh lịch đến kính râm sành điệu, Kính Tốt mang đến cho bạn diện mạo hoàn hảo và tự tin tỏa sáng mỗi ngày.
               </p>
-              <div className="relative max-w-xl mt-6">
+              <form onSubmit={handleSearch} className="relative max-w-xl mt-6">
                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                   <Search size={18} className="text-[#a8a196]" />
                 </div>
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm kiếm kính râm, gọng kính..."
                   className="w-full pl-12 pr-32 py-4 rounded-full bg-white border border-black/5 shadow-sm focus:outline-none focus:ring-1 focus:ring-primary text-sm font-medium"
                 />
                 <div className="absolute inset-y-1.5 right-1.5 flex items-center">
-                  <button className="h-full px-6 bg-accent hover:bg-[#c46c2d] text-white rounded-full text-xs uppercase tracking-wider font-semibold transition-colors">
+                  <button type="submit" className="h-full px-6 bg-accent hover:bg-[#c46c2d] text-white rounded-full text-xs uppercase tracking-wider font-semibold transition-colors">
                     Tìm kiếm
                   </button>
                 </div>
-              </div>
+              </form>
               <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-4">
                 <div className="flex items-center gap-2 text-[#7f786f]">
                   <ShieldCheck size={16} strokeWidth={1.5} />

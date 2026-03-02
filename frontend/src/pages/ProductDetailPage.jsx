@@ -6,6 +6,7 @@ import ProductCard from '../components/ui/ProductCard';
 import { ProductCardSkeleton } from '../components/ui/SkeletonLoader';
 import { mockProducts } from '../data/mockProducts';
 import { addToCompare } from './ComparePage';
+import { translateAttr } from '../utils/translations';
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -168,12 +169,12 @@ export default function ProductDetailPage() {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                ['Frame Shape', product.frameShape || '-'],
-                ['Frame Material', product.frameMaterial || '-'],
-                ['Lens Type', product.lensType || '-'],
-                ['Condition', product.condition || '-'],
-                ['Gender', product.gender || '-'],
-                ['Stock', stock > 0 ? `${stock} sản phẩm` : 'Hết hàng'],
+                ['Hình dáng gọng', translateAttr('frameShape', product.frameShape)],
+                ['Chất liệu gọng', translateAttr('frameMaterial', product.frameMaterial)],
+                ['Loại tròng kính', translateAttr('lensType', product.lensType)],
+                ['Tình trạng', translateAttr('condition', product.condition)],
+                ['Giới tính', translateAttr('gender', product.gender)],
+                ['Kho hàng', stock > 0 ? `${stock} sản phẩm` : 'Hết hàng'],
               ].map(([label, value]) => (
                 <div key={label} className="glass rounded-xl p-3">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-[#7f786f]">{label}</p>
