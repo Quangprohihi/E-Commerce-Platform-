@@ -237,7 +237,7 @@ export function SellerDashboardPage() {
 }
 
 export function SellerProductsPage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState('');
@@ -246,6 +246,8 @@ export function SellerProductsPage() {
   const [createMessage, setCreateMessage] = useState('');
   const [createError, setCreateError] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [categoriesFromApi, setCategoriesFromApi] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [form, setForm] = useState({
     name: '',
     categoryId: '',
@@ -260,22 +262,46 @@ export function SellerProductsPage() {
     gender: 'UNISEX',
   });
 
-  const categoryOptions = useMemo(() => {
-    const map = new Map();
-    products.forEach((item) => {
-      if (!item?.category?.id) return;
-      map.set(item.category.id, item.category.name || item.category.id);
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [products]);
+  // Refetch current user so KYC status is up-to-date (login response may omit sellerProfile).
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/auth/me')
+      .then((res) => {
+        if (!cancelled && res.data?.data) {
+          setUser(res.data.data);
+          if (res.data.data) localStorage.setItem('currentUser', JSON.stringify(res.data.data));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [setUser]);
 
   useEffect(() => {
-    if (categoryOptions.length === 0) return;
+    let cancelled = false;
+    setCategoriesLoading(true);
+    api.get('/categories')
+      .then((res) => {
+        if (!cancelled) {
+          const items = res.data?.data?.items || [];
+          setCategoriesFromApi(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCategoriesFromApi([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCategoriesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (categoriesFromApi.length === 0) return;
     setForm((prev) => {
       if (prev.categoryId) return prev;
-      return { ...prev, categoryId: categoryOptions[0].id };
+      return { ...prev, categoryId: categoriesFromApi[0].id };
     });
-  }, [categoryOptions]);
+  }, [categoriesFromApi]);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -334,7 +360,7 @@ export function SellerProductsPage() {
     setImageFile(null);
     setForm({
       name: '',
-      categoryId: categoryOptions[0]?.id || '',
+      categoryId: categoriesFromApi[0]?.id || '',
       description: '',
       price: '',
       salePrice: '',
@@ -372,7 +398,7 @@ export function SellerProductsPage() {
       }
 
       if (!form.categoryId) {
-        throw new Error('Thiếu categoryId. Hãy chọn hoặc nhập categoryId hợp lệ.');
+        throw new Error('Vui lòng chọn danh mục sản phẩm.');
       }
 
       const payload = {
@@ -463,26 +489,21 @@ export function SellerProductsPage() {
               className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
               required
             />
-            {categoryOptions.length > 0 ? (
-              <select
-                value={form.categoryId}
-                onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
-                className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-                required
-              >
-                {categoryOptions.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={form.categoryId}
-                onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
-                placeholder="Category ID"
-                className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
-                required
-              />
-            )}
+            <select
+              value={form.categoryId}
+              onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              required
+              disabled={categoriesLoading}
+              title="Danh mục"
+            >
+              <option value="">
+                {categoriesLoading ? 'Đang tải danh mục...' : '— Chọn danh mục —'}
+              </option>
+              {categoriesFromApi.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
           </div>
 
           <textarea
@@ -923,22 +944,40 @@ export function SellerKycPage() {
 }
 
 export function StaffDashboardPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+
+  const staffCards = [
+    { to: '/staff/customers', label: 'Staff', title: 'Quản lý khách hàng' },
+    { to: '/staff/sellers', label: 'Staff', title: 'Quản lý Seller' },
+    { to: '/admin/kyc', label: 'Staff', title: 'Duyệt KYC Seller' },
+    { to: '/staff/products', label: 'Staff', title: 'Quản lý sản phẩm' },
+    { to: '/staff/reviews', label: 'Staff', title: 'Quản lý phản hồi' },
+    { to: '/staff/orders', label: 'Staff', title: 'Quản lý đơn hàng' },
+  ];
+
   return (
-    <PageShell title="Staff Dashboard" subtitle="Vận hành hệ thống: khách hàng, seller, sản phẩm, feedback và đơn hàng.">
+    <PageShell title="Staff Dashboard" subtitle="Vận hành hệ thống: khách hàng, seller, sản phẩm, phản hồi và đơn hàng.">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Link to="/admin/kyc" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Duyệt KYC Seller</p></Link>
-        <Link to="/admin/users" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Quản lý người dùng</p></Link>
-        <Link to="/admin/reports" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Báo cáo & Thống kê</p></Link>
-        <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p><p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p></Link>
-        <Link to="/staff/products" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Products</p></Link>
-        <Link to="/staff/reviews" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Feedback</p></Link>
-        <Link to="/staff/orders" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Staff</p><p className="font-serif text-2xl mt-2 text-primary">Manage Orders</p></Link>
+        {staffCards.map((card) => (
+          <Link key={card.to} to={card.to} className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{card.label}</p>
+            <p className="font-serif text-2xl mt-2 text-primary">{card.title}</p>
+          </Link>
+        ))}
+        {isAdmin && (
+          <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
+            <p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p>
+          </Link>
+        )}
       </div>
     </PageShell>
   );
 }
 
 function UsersListPage({ title, subtitle, roleFilter }) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState('');
@@ -960,6 +999,22 @@ function UsersListPage({ title, subtitle, roleFilter }) {
     loadUsers();
   }, [roleFilter]);
 
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa người dùng này? Hành động không thể hoàn tác.')) return;
+    try {
+      await api.delete(`/admin/users/${userId}`);
+      await loadUsers();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể xóa người dùng.');
+    }
+  };
+
+  const columns = useMemo(() => {
+    const base = ['Họ tên', 'Email', 'SĐT', 'Role', 'KYC'];
+    if (user?.role === 'ADMIN') base.push('Thao tác');
+    return base;
+  }, [user?.role]);
+
   return (
     <PageShell title={title} subtitle={subtitle}>
       <SectionCard title="Danh sách người dùng" action={<button type="button" onClick={loadUsers} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}>
@@ -968,7 +1023,7 @@ function UsersListPage({ title, subtitle, roleFilter }) {
         {!loading && !error && users.length === 0 ? <EmptyState text="Không có dữ liệu người dùng." /> : null}
         {!loading && !error && users.length > 0 ? (
           <DataTable
-            columns={['Họ tên', 'Email', 'SĐT', 'Role', 'KYC']}
+            columns={columns}
             rows={users.map((item) => (
               <tr key={item.id} className="border-b border-black/5">
                 <td className="py-3 pr-3">{item.fullName}</td>
@@ -976,6 +1031,15 @@ function UsersListPage({ title, subtitle, roleFilter }) {
                 <td className="py-3 pr-3">{item.phone || '--'}</td>
                 <td className="py-3 pr-3">{item.role}</td>
                 <td className="py-3 pr-3">{item.sellerProfile?.kycStatus || '--'}</td>
+                {user?.role === 'ADMIN' ? (
+                  <td className="py-3 pr-3">
+                    {item.id !== user?.id ? (
+                      <button type="button" onClick={() => handleDeleteUser(item.id)} className="text-red-600 hover:text-red-700 text-xs uppercase tracking-widest">Xóa</button>
+                    ) : (
+                      <span className="text-text-muted text-xs">--</span>
+                    )}
+                  </td>
+                ) : null}
               </tr>
             ))}
           />
@@ -1151,13 +1215,23 @@ export function AdminDashboardPage() {
         <StatCard label="Reviews" value={reviews.length} />
         <StatCard label="KYC Pending" value={pendingKyc} />
       </div>
-      <div className="mt-6">
-        <Link to="/admin/reports" className="glass rounded-2xl p-5 flex items-center gap-3 hover:bg-white/80 transition-colors">
-          <span className="text-2xl">📊</span>
-          <div>
-            <p className="font-medium text-primary">Báo cáo</p>
-            <p className="text-sm text-text-muted">Xem tổng hợp và xuất báo cáo PDF/Excel</p>
-          </div>
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Link to="/admin/kyc" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
+          <p className="font-serif text-2xl mt-2 text-primary">Duyệt KYC Seller</p>
+        </Link>
+        <Link to="/admin/users" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
+          <p className="font-serif text-2xl mt-2 text-primary">Quản lý người dùng</p>
+        </Link>
+        <Link to="/admin/reports" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
+          <p className="font-serif text-2xl mt-2 text-primary">Báo cáo & Thống kê</p>
+          <p className="text-sm text-text-muted mt-1">Xuất PDF/Excel</p>
+        </Link>
+        <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
+          <p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p>
         </Link>
       </div>
     </PageShell>
@@ -1596,6 +1670,17 @@ export function AdminKycPage() {
     }
   };
 
+  const { user: currentUser } = useAuth();
+  const handleDeleteSeller = async (userId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa seller này? Hành động không thể hoàn tác.')) return;
+    try {
+      await api.delete(`/admin/users/${userId}`);
+      await loadSellers(page);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể xóa seller.');
+    }
+  };
+
   return (
     <PageShell title="Duyệt KYC Seller" subtitle="Xem và phê duyệt hồ sơ bán hàng của Seller.">
       <SectionCard
@@ -1648,12 +1733,15 @@ export function AdminKycPage() {
                   </td>
                   <td className="py-3 pr-3 text-sm">{u.sellerProfile?.shopName || '--'}</td>
                   <td className="py-3 pr-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {kyc !== 'APPROVED' && (
                         <button type="button" onClick={() => updateKycStatus(u.id, 'APPROVED')} className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">Duyệt</button>
                       )}
                       {kyc !== 'REJECTED' && (
                         <button type="button" onClick={() => updateKycStatus(u.id, 'REJECTED')} className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700">Từ chối</button>
+                      )}
+                      {currentUser?.role === 'ADMIN' && u.id !== currentUser?.id && (
+                        <button type="button" onClick={() => handleDeleteSeller(u.id)} className="px-3 py-1 border border-red-600 text-red-600 rounded-lg text-xs hover:bg-red-50">Xóa</button>
                       )}
                     </div>
                   </td>

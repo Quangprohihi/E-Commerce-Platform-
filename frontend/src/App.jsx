@@ -214,7 +214,7 @@ function App() {
           path="admin/kyc"
           element={(
             <ProtectedRoute>
-              <RoleRoute allowedRoles={['ADMIN']}>
+              <RoleRoute allowedRoles={['STAFF', 'ADMIN']}>
                 <AdminKycPage />
               </RoleRoute>
             </ProtectedRoute>

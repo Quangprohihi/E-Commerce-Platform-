@@ -9,8 +9,10 @@ const aiRoutes = require('./ai.routes');
 const reviewRoutes = require('./review.routes');
 const adminRoutes = require('./admin.routes');
 const statsRoutes = require('./stats.routes');
+const categoryRoutes = require('./category.routes');
 
 router.use('/auth', authRoutes);
+router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
 router.use('/payment', paymentRoutes);

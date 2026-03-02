@@ -123,8 +123,7 @@ async function getBySlug(slug) {
 async function ensureSellerExists(sellerId) {
   const seller = await prisma.user.findUnique({
     where: { id: sellerId },
-    select: { id: true, role: true },
-    include: { sellerProfile: true },
+    select: { id: true, role: true, sellerProfile: true },
   });
   if (!seller || seller.role !== 'SELLER') {
     throw Object.assign(new Error('Seller không hợp lệ'), { statusCode: 400 });
