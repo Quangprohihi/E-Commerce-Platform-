@@ -218,22 +218,54 @@ export function BuyerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const loadOrders = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.get('/orders');
+      setOrders(response.data?.data || []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể tải đơn hàng.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const response = await api.get('/orders');
-        setOrders(response.data?.data || []);
-      } catch (err) {
-        setError(err.response?.data?.message || 'Không thể tải đơn hàng.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadOrders();
   }, []);
+
+  const viewDetail = async (order) => {
+    setError('');
+    try {
+      const response = await api.get(`/orders/${order.id}`);
+      setSelectedOrder(response.data?.data || order);
+    } catch (err) {
+      setSelectedOrder(order);
+      setError(err.response?.data?.message || 'Không thể tải chi tiết đơn.');
+    }
+  };
+
+  const cancelOrder = async () => {
+    if (!selectedOrder?.id) return;
+    if (!window.confirm('Bạn có chắc muốn hủy đơn hàng này?')) return;
+    setCancelling(true);
+    setError('');
+    try {
+      await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'CANCELLED' });
+      setError('');
+      const refreshed = await api.get(`/orders/${selectedOrder.id}`);
+      setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'CANCELLED' });
+      await loadOrders();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể hủy đơn hàng.');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const totalOrders = orders.length;
   const pendingOrders = orders.filter((item) => item.status === 'PENDING').length;
@@ -245,13 +277,16 @@ export function BuyerOrdersPage() {
         <StatCard label="Đang chờ" value={pendingOrders} icon={ClipboardList} accentColor="#3B82F6" />
       </div>
 
-      <SectionCard title="Danh sách đơn hàng">
+      <SectionCard
+        title="Danh sách đơn hàng"
+        action={<button type="button" onClick={loadOrders} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
+      >
         {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
-        {error ? <MessageBox type="error" text={error} /> : null}
+        {error ? <MessageBox type={error.includes('thành công') ? 'success' : 'error'} text={error} /> : null}
         {!loading && !error && orders.length === 0 ? <EmptyState text="Bạn chưa có đơn hàng nào." /> : null}
         {!loading && !error && orders.length > 0 ? (
           <DataTable
-            columns={['Mã đơn', 'Ngày tạo', 'Trạng thái', 'Tổng tiền', 'Chi tiết']}
+            columns={['Mã đơn', 'Ngày tạo', 'Trạng thái', 'Tổng tiền', 'Sản phẩm', 'Thao tác']}
             rows={orders.map((order) => (
               <tr key={order.id} className="border-b border-black/5">
                 <td className="py-3 pr-3">{order.id.slice(0, 10)}...</td>
@@ -259,11 +294,60 @@ export function BuyerOrdersPage() {
                 <td className="py-3 pr-3">{order.status}</td>
                 <td className="py-3 pr-3">{currency(order.totalAmount)}</td>
                 <td className="py-3 pr-3">{order.details?.length || 0} sản phẩm</td>
+                <td className="py-3 pr-3">
+                  <button type="button" onClick={() => viewDetail(order)} className="text-xs uppercase tracking-[0.12em] text-primary hover:text-accent">
+                    Xem chi tiết
+                  </button>
+                </td>
               </tr>
             ))}
           />
         ) : null}
       </SectionCard>
+
+      <div className="mt-8">
+        <SectionCard title="Chi tiết đơn hàng">
+          {!selectedOrder ? (
+            <p className="text-text-muted text-sm">Chọn một đơn từ bảng trên và bấm <strong>Xem chi tiết</strong>.</p>
+          ) : (
+            <div className="mt-4 rounded-xl border border-black/10 bg-white/60 p-4 space-y-3">
+              <p><span className="text-text-muted">Mã đơn:</span> {selectedOrder.id}</p>
+              <p><span className="text-text-muted">Ngày tạo:</span> {formatDate(selectedOrder.createdAt)}</p>
+              <p><span className="text-text-muted">Trạng thái:</span> <span className={`font-medium ${selectedOrder.status === 'CANCELLED' ? 'text-red-600' : selectedOrder.status === 'DELIVERED' ? 'text-emerald-600' : 'text-primary'}`}>{selectedOrder.status}</span></p>
+              <p><span className="text-text-muted">Địa chỉ:</span> {selectedOrder.shippingAddress || '--'}</p>
+              <p><span className="text-text-muted">Số điện thoại:</span> {selectedOrder.phone || '--'}</p>
+              {selectedOrder.note ? <p><span className="text-text-muted">Ghi chú:</span> {selectedOrder.note}</p> : null}
+              <p><span className="text-text-muted">Tổng tiền:</span> <span className="font-medium">{currency(selectedOrder.totalAmount)}</span></p>
+              <p><span className="text-text-muted">Thanh toán:</span> {selectedOrder.paymentMethod || 'COD'}</p>
+              {selectedOrder.details?.length ? (
+                <div className="rounded-xl border border-black/10 bg-white/70 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Sản phẩm trong đơn</p>
+                  <div className="space-y-2">
+                    {selectedOrder.details.map((detail) => (
+                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-3 text-sm">
+                        <p className="text-primary">{detail.product?.name || detail.productId}</p>
+                        <p className="text-text-muted">x{detail.quantity} • {currency(detail.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedOrder.status === 'PENDING' ? (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={cancelOrder}
+                    disabled={cancelling}
+                    className="h-10 px-5 rounded-xl bg-red-600 text-white text-xs uppercase tracking-[0.12em] hover:bg-red-700 transition-colors disabled:opacity-60"
+                  >
+                    {cancelling ? 'Đang hủy...' : 'Hủy đơn hàng'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </SectionCard>
+      </div>
     </PageShell>
   );
 }
@@ -273,43 +357,223 @@ export function BuyerReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [reviews, setReviews] = useState([]);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Create review state
+  const [deliveredProducts, setDeliveredProducts] = useState([]);
+  const [reviewForm, setReviewForm] = useState({ productId: '', rating: '5', comment: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadReviews = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.get('/reviews', { params: { userId: user.id, limit: 100 } });
+      setReviews(response.data?.data?.items || []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể tải đánh giá.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
-    const load = async () => {
+    let cancelled = false;
+
+    const loadAll = async () => {
       setLoading(true);
       setError('');
       try {
-        const response = await api.get('/reviews', { params: { userId: user.id, limit: 100 } });
-        setReviews(response.data?.data?.items || []);
+        const [reviewsRes, ordersRes] = await Promise.all([
+          api.get('/reviews', { params: { userId: user.id, limit: 100 } }),
+          api.get('/orders'),
+        ]);
+
+        if (cancelled) return;
+
+        const reviewItems = reviewsRes.data?.data?.items || [];
+        setReviews(reviewItems);
+
+        // Extract products from DELIVERED orders that haven't been reviewed yet
+        const orders = ordersRes.data?.data || [];
+        const reviewedProductIds = new Set(reviewItems.map((r) => r.productId));
+        const productMap = new Map();
+        orders
+          .filter((o) => o.status === 'DELIVERED')
+          .forEach((order) => {
+            (order.details || []).forEach((detail) => {
+              const pid = detail.product?.id || detail.productId;
+              if (pid && !reviewedProductIds.has(pid) && !productMap.has(pid)) {
+                productMap.set(pid, { id: pid, name: detail.product?.name || pid });
+              }
+            });
+          });
+        setDeliveredProducts(Array.from(productMap.values()));
       } catch (err) {
-        setError(err.response?.data?.message || 'Không thể tải đánh giá.');
+        if (!cancelled) {
+          setError(err.response?.data?.message || 'Không thể tải dữ liệu.');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    load();
+
+    loadAll();
+    return () => { cancelled = true; };
   }, [user?.id]);
 
+  const handleCreateReview = async (event) => {
+    event.preventDefault();
+    if (!reviewForm.productId) {
+      setError('Vui lòng chọn sản phẩm cần đánh giá.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.post('/reviews', {
+        productId: reviewForm.productId,
+        rating: parseInt(reviewForm.rating, 10),
+        comment: reviewForm.comment || null,
+      });
+      setSuccessMsg('Gửi đánh giá thành công!');
+      setReviewForm({ productId: '', rating: '5', comment: '' });
+      // Reload to update both reviews list and available products
+      const [reviewsRes, ordersRes] = await Promise.all([
+        api.get('/reviews', { params: { userId: user.id, limit: 100 } }),
+        api.get('/orders'),
+      ]);
+      const reviewItems = reviewsRes.data?.data?.items || [];
+      setReviews(reviewItems);
+      const reviewedProductIds = new Set(reviewItems.map((r) => r.productId));
+      const productMap = new Map();
+      (ordersRes.data?.data || [])
+        .filter((o) => o.status === 'DELIVERED')
+        .forEach((order) => {
+          (order.details || []).forEach((detail) => {
+            const pid = detail.product?.id || detail.productId;
+            if (pid && !reviewedProductIds.has(pid) && !productMap.has(pid)) {
+              productMap.set(pid, { id: pid, name: detail.product?.name || pid });
+            }
+          });
+        });
+      setDeliveredProducts(Array.from(productMap.values()));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể gửi đánh giá.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa đánh giá này?')) return;
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.delete(`/reviews/${reviewId}`);
+      setSuccessMsg('Xóa đánh giá thành công.');
+      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể xóa đánh giá.');
+    }
+  };
+
   return (
-    <PageShell title="Đánh giá của Buyer" subtitle="Tổng hợp các review bạn đã gửi.">
-      <SectionCard title="Danh sách đánh giá">
-        {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
-        {error ? <MessageBox type="error" text={error} /> : null}
-        {!loading && !error && reviews.length === 0 ? <EmptyState text="Bạn chưa gửi đánh giá nào." /> : null}
-        {!loading && !error && reviews.length > 0 ? (
-          <div className="space-y-3">
-            {reviews.map((review) => (
-              <div key={review.id} className="rounded-xl border border-black/10 bg-white/60 p-4">
-                <p className="font-medium text-primary">{review.product?.name || 'Sản phẩm'}</p>
-                <p className="text-sm text-text-muted mt-1">Rating: {review.rating}/5</p>
-                <p className="text-sm mt-2">{review.comment || 'Không có nhận xét'}</p>
-                <p className="text-xs text-text-muted mt-2">{formatDate(review.createdAt)}</p>
+    <PageShell title="Đánh giá của Buyer" subtitle="Tổng hợp các review bạn đã gửi và tạo đánh giá mới.">
+      {/* Create Review Form */}
+      <SectionCard title="Tạo đánh giá mới">
+        {deliveredProducts.length === 0 && !loading ? (
+          <EmptyState text="Không có sản phẩm nào cần đánh giá. Bạn cần có đơn hàng đã giao (DELIVERED) và chưa đánh giá." />
+        ) : (
+          <form onSubmit={handleCreateReview} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Sản phẩm *</label>
+                <select
+                  value={reviewForm.productId}
+                  onChange={(e) => setReviewForm((prev) => ({ ...prev, productId: e.target.value }))}
+                  className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+                  required
+                >
+                  <option value="">— Chọn sản phẩm —</option>
+                  {deliveredProducts.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               </div>
-            ))}
-          </div>
-        ) : null}
+              <div>
+                <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Số sao *</label>
+                <select
+                  value={reviewForm.rating}
+                  onChange={(e) => setReviewForm((prev) => ({ ...prev, rating: e.target.value }))}
+                  className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+                >
+                  <option value="5">⭐⭐⭐⭐⭐ (5 sao)</option>
+                  <option value="4">⭐⭐⭐⭐ (4 sao)</option>
+                  <option value="3">⭐⭐⭐ (3 sao)</option>
+                  <option value="2">⭐⭐ (2 sao)</option>
+                  <option value="1">⭐ (1 sao)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Nhận xét</label>
+              <textarea
+                value={reviewForm.comment}
+                onChange={(e) => setReviewForm((prev) => ({ ...prev, comment: e.target.value }))}
+                placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..."
+                className="w-full min-h-24 rounded-xl border border-black/10 px-4 py-3 bg-white/70"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="h-11 px-6 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60"
+            >
+              {submitting ? 'Đang gửi...' : 'Gửi đánh giá'}
+            </button>
+          </form>
+        )}
+        {error ? <div className="mt-3"><MessageBox type="error" text={error} /></div> : null}
+        {successMsg ? <div className="mt-3"><MessageBox type="success" text={successMsg} /></div> : null}
       </SectionCard>
+
+      {/* Reviews List */}
+      <div className="mt-6">
+        <SectionCard
+          title="Danh sách đánh giá"
+          action={<button type="button" onClick={loadReviews} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
+        >
+          {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
+          {!loading && reviews.length === 0 ? <EmptyState text="Bạn chưa gửi đánh giá nào." /> : null}
+          {!loading && reviews.length > 0 ? (
+            <div className="space-y-3">
+              {reviews.map((review) => (
+                <div key={review.id} className="rounded-xl border border-black/10 bg-white/60 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-primary">{review.product?.name || 'Sản phẩm'}</p>
+                      <p className="text-sm text-text-muted mt-1">{'⭐'.repeat(review.rating)} ({review.rating}/5)</p>
+                      <p className="text-sm mt-2">{review.comment || 'Không có nhận xét'}</p>
+                      <p className="text-xs text-text-muted mt-2">{formatDate(review.createdAt)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteReview(review.id)}
+                      className="text-red-600 hover:text-red-700 text-xs uppercase tracking-widest font-medium shrink-0"
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </SectionCard>
+      </div>
     </PageShell>
   );
 }
