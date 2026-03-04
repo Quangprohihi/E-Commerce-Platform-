@@ -1,5 +1,5 @@
 const authService = require('../services/auth.service');
-const { validateRegister, validateLogin } = require('../utils/validators');
+const { validateRegister, validateLogin, validateProfileUpdate } = require('../utils/validators');
 const { sendCreated, sendSuccess } = require('../utils/response');
 
 async function register(req, res, next) {
@@ -43,4 +43,15 @@ async function uploadKYC(req, res, next) {
   }
 }
 
-module.exports = { register, login, getMe, uploadKYC };
+async function updateMe(req, res, next) {
+  try {
+    const v = validateProfileUpdate(req.body);
+    if (!v.ok) return res.status(400).json({ status: 400, message: v.message });
+    const data = await authService.updateProfile(req.user.id, v.data);
+    return sendSuccess(res, 'Cập nhật thông tin cá nhân thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { register, login, getMe, uploadKYC, updateMe };

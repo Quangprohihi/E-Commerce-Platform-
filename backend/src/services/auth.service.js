@@ -65,4 +65,23 @@ async function submitKYC(userId, filePath, body = {}) {
   return profile;
 }
 
-module.exports = { register, login, getMe, submitKYC };
+async function updateProfile(userId, data) {
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      fullName: data.fullName,
+      phone: data.phone,
+      avatar: data.avatar,
+    },
+    select: { id: true, email: true, fullName: true, role: true, phone: true, avatar: true, createdAt: true },
+  });
+
+  let sellerProfile = null;
+  if (updated.role === 'SELLER') {
+    sellerProfile = await prisma.sellerProfile.findUnique({ where: { userId: updated.id } });
+  }
+
+  return { ...updated, sellerProfile };
+}
+
+module.exports = { register, login, getMe, submitKYC, updateProfile };

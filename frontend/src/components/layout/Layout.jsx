@@ -7,6 +7,7 @@ import AIChatBox from '../chat/AIChatBox';
 export default function Layout() {
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const location = useLocation();
+  const isDashboardRoute = ['/account', '/seller', '/staff', '/admin', '/settings'].some((path) => location.pathname.startsWith(path));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -24,7 +25,7 @@ export default function Layout() {
       <main>
         <Outlet />
       </main>
-      <Footer onOpenAIChat={() => setAiChatOpen(true)} />
+      {!isDashboardRoute ? <Footer onOpenAIChat={() => setAiChatOpen(true)} /> : null}
       <AIChatBox open={aiChatOpen} onClose={() => setAiChatOpen(false)} />
     </>
   );

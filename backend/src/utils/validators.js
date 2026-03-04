@@ -19,4 +19,25 @@ function validateLogin(body) {
   return { ok: true, data: { email, password } };
 }
 
-module.exports = { isValidEmail, validateRegister, validateLogin };
+function validateProfileUpdate(body) {
+  const { fullName, phone, avatar } = body || {};
+
+  if (!fullName || !String(fullName).trim()) {
+    return { ok: false, message: 'Họ tên là bắt buộc' };
+  }
+
+  if (!phone || !String(phone).trim()) {
+    return { ok: false, message: 'Số điện thoại là bắt buộc' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      fullName: String(fullName).trim(),
+      phone: String(phone).trim(),
+      avatar: avatar ? String(avatar).trim() : null,
+    },
+  };
+}
+
+module.exports = { isValidEmail, validateRegister, validateLogin, validateProfileUpdate };

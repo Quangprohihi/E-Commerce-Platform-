@@ -1,0 +1,67 @@
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  Star,
+  UserCircle,
+  Package,
+  ClipboardList,
+  BadgeCheck,
+  Users,
+  Store,
+  PackageSearch,
+  MessageSquare,
+  ListOrdered,
+  UserCog,
+  BarChart3,
+  ShieldCheck,
+  Settings,
+  Layers,
+} from 'lucide-react';
+
+export const ROLE_META = {
+  buyer: { label: 'Buyer', accent: '#3B82F6' },
+  seller: { label: 'Seller', accent: '#10B981' },
+  staff: { label: 'Staff', accent: '#8B5CF6' },
+  admin: { label: 'Admin', accent: '#F59E0B' },
+};
+
+export const DASHBOARD_MENUS = {
+  buyer: [
+    { to: '/account', label: 'Tổng quan', icon: LayoutDashboard },
+    { to: '/account/orders', label: 'Đơn hàng', icon: ShoppingBag },
+    { to: '/account/reviews', label: 'Đánh giá', icon: Star },
+    { to: '/account/profile', label: 'Hồ sơ', icon: UserCircle },
+    { to: '/settings', label: 'Cài đặt', icon: Settings },
+  ],
+  seller: [
+    { to: '/seller', label: 'Tổng quan', icon: LayoutDashboard },
+    { to: '/seller/products', label: 'Sản phẩm', icon: Package },
+    { to: '/seller/orders', label: 'Đơn hàng', icon: ClipboardList },
+    { to: '/seller/kyc', label: 'Xác minh KYC', icon: BadgeCheck },
+    { to: '/settings', label: 'Cài đặt', icon: Settings },
+  ],
+  staff: [
+    { to: '/staff', label: 'Tổng quan', icon: LayoutDashboard },
+    { section: 'Quản lý' },
+    { to: '/staff/customers', label: 'Khách hàng', icon: Users },
+    { to: '/staff/sellers', label: 'Seller', icon: Store },
+    { to: '/admin/kyc', label: 'Duyệt KYC', icon: BadgeCheck },
+    { to: '/staff/products', label: 'Sản phẩm', icon: PackageSearch },
+    { to: '/staff/reviews', label: 'Phản hồi', icon: MessageSquare },
+    { to: '/staff/orders', label: 'Đơn hàng', icon: ListOrdered },
+    { section: 'Tài khoản' },
+    { to: '/settings', label: 'Cài đặt', icon: Settings },
+  ],
+  admin: [
+    { to: '/admin', label: 'Tổng quan', icon: LayoutDashboard },
+    { section: 'Quản lý' },
+    { to: '/admin/users', label: 'Người dùng', icon: UserCog },
+    { to: '/admin/kyc', label: 'Duyệt KYC', icon: ShieldCheck },
+    { section: 'Hệ thống' },
+    { to: '/admin/reports', label: 'Báo cáo', icon: BarChart3 },
+    { to: '/admin/system', label: 'Cấu hình', icon: Settings },
+    { to: '/settings', label: 'Cài đặt tài khoản', icon: UserCircle },
+    { section: 'Điều hướng' },
+    { to: '/staff', label: 'Staff Panel', icon: Layers },
+  ],
+};

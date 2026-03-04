@@ -1,14 +1,14 @@
-import { useRef, useState, useEffect } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef, useState, useEffect, useMemo } from 'react';
+import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Sparkles, Search, ShieldCheck, CheckCircle, Award, Sun, Glasses, RefreshCw, Monitor, Circle, Wrench } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Search, ShieldCheck, CheckCircle, Award, Sun, Glasses, RefreshCw, Monitor, Circle, Wrench } from 'lucide-react';
 import ProductCard from '../components/ui/ProductCard';
 import api from '../services/api';
-import { mockProducts } from '../data/mockProducts';
 
 export default function HomePage() {
   const heroRef = useRef(null);
-  const featuredRef = useRef(null);
+  const featInnerRef = useRef(null);
+  const usedInnerRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: heroRef,
     offset: ['start start', 'end start'],
@@ -19,10 +19,15 @@ export default function HomePage() {
 
   const [featured, setFeatured] = useState([]);
   const [usedProducts, setUsedProducts] = useState([]);
-  const [isFallback, setIsFallback] = useState(false);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [heroDirection, setHeroDirection] = useState(1);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
   const [homeStats, setHomeStats] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const usedRef = useRef(null);
+  const [featX, setFeatX] = useState(0);
+  const [usedX, setUsedX] = useState(0);
+  const [isFeatPaused, setIsFeatPaused] = useState(false);
+  const [isUsedPaused, setIsUsedPaused] = useState(false);
   const navigate = useNavigate();
 
   const handleSearch = (e) => {
@@ -43,31 +48,121 @@ export default function HomePage() {
     ]).then(([featRes, usedRes]) => {
       const featData = featRes.data?.data?.items || [];
       const usedData = usedRes.data?.data?.items || [];
-      if (!featData.length) {
-        setFeatured(mockProducts.slice(0, 6));
-        setUsedProducts(mockProducts.slice(0, 6));
-        setIsFallback(true);
-      } else {
-        setFeatured(featData);
-        setUsedProducts(usedData.length ? usedData : featData.slice(0, 4));
-        setIsFallback(false);
-      }
+      setFeatured(featData);
+      setUsedProducts(usedData.length ? usedData : featData.slice(0, 4));
     });
   }, []);
 
-  const scrollFeatured = (dir = 1) => {
-    if (!featuredRef.current) return;
-    featuredRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
+  const heroItems = useMemo(() => (
+    featured
+      .filter((item) => item && item.id && item.name)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        image: item.images?.[0] || null,
+        rating: Number(item.rating ?? 4.8),
+        reviewCount: Number(item.reviewCount ?? 0),
+      }))
+  ), [featured]);
+
+  useEffect(() => {
+    if (heroItems.length === 0) {
+      setHeroIndex(0);
+      return;
+    }
+    if (heroIndex >= heroItems.length) {
+      setHeroIndex(0);
+    }
+  }, [heroIndex, heroItems.length]);
+
+  useEffect(() => {
+    if (isHeroPaused || heroItems.length <= 1) return undefined;
+    const timer = window.setInterval(() => {
+      setHeroDirection(1);
+      setHeroIndex((prev) => (prev + 1) % heroItems.length);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [heroItems.length, isHeroPaused]);
+
+  const activeHero = heroItems[heroIndex] || null;
+
+  const slideVariants = {
+    enter: (dir) => ({ x: dir > 0 ? '100%' : '-100%', opacity: 0.4 }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir) => ({ x: dir > 0 ? '-100%' : '100%', opacity: 0.4 }),
   };
 
-  const scrollUsed = (dir = 1) => {
-    if (!usedRef.current) return;
-    usedRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
+  const nextHero = () => {
+    if (heroItems.length <= 1) return;
+    setHeroDirection(1);
+    setHeroIndex((prev) => (prev + 1) % heroItems.length);
   };
 
-  const openAI = () => {
-    window.dispatchEvent(new CustomEvent('open-ai-chat'));
+  const prevHero = () => {
+    if (heroItems.length <= 1) return;
+    setHeroDirection(-1);
+    setHeroIndex((prev) => (prev - 1 + heroItems.length) % heroItems.length);
   };
+
+  const slideFeatured = (dir) => {
+    const el = featInnerRef.current;
+    if (!el || !el.children[0]) return;
+    const gap = parseFloat(getComputedStyle(el).gap) || 24;
+    const step = el.children[0].offsetWidth + gap;
+    const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
+    setFeatX((prev) => {
+      const next = prev - dir * step;
+      if (next < -maxX) return 0;
+      if (next > 0) return -maxX;
+      return next;
+    });
+  };
+
+  const slideUsed = (dir) => {
+    const el = usedInnerRef.current;
+    if (!el || !el.children[0]) return;
+    const gap = parseFloat(getComputedStyle(el).gap) || 24;
+    const step = el.children[0].offsetWidth + gap;
+    const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
+    setUsedX((prev) => {
+      const next = prev - dir * step;
+      if (next < -maxX) return 0;
+      if (next > 0) return -maxX;
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (isFeatPaused || featured.length <= 1) return undefined;
+    const timer = window.setInterval(() => {
+      const el = featInnerRef.current;
+      if (!el || !el.children[0]) return;
+      const gap = parseFloat(getComputedStyle(el).gap) || 24;
+      const step = el.children[0].offsetWidth + gap;
+      const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
+      setFeatX((prev) => {
+        const next = prev - step;
+        return next < -maxX ? 0 : next;
+      });
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [featured.length, isFeatPaused]);
+
+  useEffect(() => {
+    if (isUsedPaused || usedProducts.length <= 1) return undefined;
+    const timer = window.setInterval(() => {
+      const el = usedInnerRef.current;
+      if (!el || !el.children[0]) return;
+      const gap = parseFloat(getComputedStyle(el).gap) || 24;
+      const step = el.children[0].offsetWidth + gap;
+      const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
+      setUsedX((prev) => {
+        const next = prev - step;
+        return next < -maxX ? 0 : next;
+      });
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, [usedProducts.length, isUsedPaused]);
 
   const ticker = 'KÍNH RÂM  •  GỌNG KÍNH  •  KÍNH CẬN  •  KÍNH THỜI TRANG  •  AI STYLIST  •  ';
 
@@ -121,18 +216,74 @@ export default function HomePage() {
                 </div>
               </div>
             </motion.div>
-            <motion.div style={{ imageY }} className="lg:col-span-6 relative">
-              <div className="aspect-4/5 md:aspect-5/4 rounded-4xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.15)]">
-                <img
-                  src="https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=1600&q=80"
-                  alt="Kính cao cấp"
-                  className="w-full h-full object-cover"
-                />
+            <motion.div style={{ imageY }} className="lg:col-span-6 relative"
+              onMouseEnter={() => setIsHeroPaused(true)}
+              onMouseLeave={() => setIsHeroPaused(false)}
+            >
+              <div className="relative">
+                <div className="aspect-4/5 md:aspect-5/4 rounded-4xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.15)] relative bg-white/40">
+                  <AnimatePresence initial={false} mode="popLayout" custom={heroDirection}>
+                    <motion.img
+                      key={activeHero?.id || 'hero-default'}
+                      src={activeHero?.image || 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=1600&q=80'}
+                      alt={activeHero?.name || 'Kính cao cấp'}
+                      className="w-full h-full object-cover absolute inset-0"
+                      custom={heroDirection}
+                      variants={slideVariants}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+                    />
+                  </AnimatePresence>
+                </div>
+
+                {heroItems.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={prevHero}
+                      className="absolute -left-5 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full flex items-center justify-center bg-white/50 hover:bg-white/80 text-primary/70 hover:text-primary backdrop-blur-xl border border-white/60 shadow-lg transition-all duration-200 hover:scale-105"
+                      aria-label="Sản phẩm trước"
+                    >
+                      <ArrowLeft size={17} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={nextHero}
+                      className="absolute -right-5 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full flex items-center justify-center bg-white/50 hover:bg-white/80 text-primary/70 hover:text-primary backdrop-blur-xl border border-white/60 shadow-lg transition-all duration-200 hover:scale-105"
+                      aria-label="Sản phẩm tiếp theo"
+                    >
+                      <ArrowRight size={17} strokeWidth={1.8} />
+                    </button>
+                  </>
+                )}
               </div>
-              <div className="absolute -bottom-6 -left-6 glass-strong rounded-2xl px-4 py-3 text-sm">
-                <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f]">Đánh giá trung bình</p>
-                <p className="font-serif text-2xl">4.9/5</p>
+
+              <div className="mt-5 flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#7f786f]">Sản phẩm nổi bật</p>
+                  <p className="font-serif text-2xl text-primary mt-1 truncate">{activeHero?.name || 'Kính cao cấp tuyển chọn'}</p>
+                </div>
+                <div className="shrink-0 glass-strong rounded-xl px-3.5 py-2 text-right">
+                  <p className="font-serif text-xl leading-tight">{(activeHero?.rating || 4.9).toFixed(1)}<span className="text-sm text-[#7f786f]">/5</span></p>
+                  <p className="text-[10px] text-[#7f786f] mt-0.5">{activeHero?.reviewCount || 0} đánh giá</p>
+                </div>
               </div>
+
+              {heroItems.length > 1 && (
+                <div className="flex items-center justify-center gap-1.5 mt-4">
+                  {heroItems.map((item, idx) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => { setHeroDirection(idx > heroIndex ? 1 : -1); setHeroIndex(idx); }}
+                      className={`rounded-full transition-all duration-300 ${idx === heroIndex ? 'w-6 h-2 bg-primary/60' : 'w-2 h-2 bg-black/15 hover:bg-black/30'}`}
+                      aria-label={`Xem sản phẩm ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
             </motion.div>
           </div>
         </motion.div>
@@ -148,7 +299,11 @@ export default function HomePage() {
         </motion.div>
       </section>
 
-      <section className="py-16 md:py-24">
+      <section
+        className="py-16 md:py-24"
+        onMouseEnter={() => setIsFeatPaused(true)}
+        onMouseLeave={() => setIsFeatPaused(false)}
+      >
         <div className="max-w-360 mx-auto px-4 sm:px-6 lg:px-10">
           <div className="flex items-end justify-between mb-10 gap-4">
             <div>
@@ -163,29 +318,31 @@ export default function HomePage() {
                 Xem tất cả &rarr;
               </Link>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => scrollFeatured(-1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
+                <button type="button" onClick={() => slideFeatured(-1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
                   <ArrowLeft size={16} className="mx-auto" />
                 </button>
-                <button type="button" onClick={() => scrollFeatured(1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
+                <button type="button" onClick={() => slideFeatured(1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
                   <ArrowRight size={16} className="mx-auto" />
                 </button>
               </div>
             </div>
           </div>
-          {isFallback ? (
-            <p className="text-xs uppercase tracking-[0.14em] text-[#7f786f] mb-4">Đang dùng dữ liệu demo</p>
-          ) : null}
-          <div ref={featuredRef} className="overflow-x-auto scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
-            <div className="flex gap-6 md:gap-8 pb-4 snap-x snap-mandatory min-w-0">
+          <div className="overflow-hidden -mx-4 px-4 md:-mx-6 md:px-6">
+            <motion.div
+              ref={featInnerRef}
+              className="flex gap-6 md:gap-8 pb-4 min-w-0"
+              animate={{ x: featX }}
+              transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+            >
               {featured.map((item) => (
                 <div
                   key={item.id}
-                  className="shrink-0 w-70 sm:w-80 snap-start"
+                  className="shrink-0 w-70 sm:w-80"
                 >
                   <ProductCard product={item} />
                 </div>
               ))}
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
@@ -234,7 +391,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="pb-16 md:pb-24">
+      <section
+        className="pb-16 md:pb-24"
+        onMouseEnter={() => setIsUsedPaused(true)}
+        onMouseLeave={() => setIsUsedPaused(false)}
+      >
         <div className="max-w-360 mx-auto px-4 sm:px-6 lg:px-10">
           <div className="flex items-end justify-between mb-10 gap-4">
             <div>
@@ -249,23 +410,28 @@ export default function HomePage() {
                 Xem tất cả &rarr;
               </Link>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => scrollUsed(-1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
+                <button type="button" onClick={() => slideUsed(-1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
                   <ArrowLeft size={16} className="mx-auto" />
                 </button>
-                <button type="button" onClick={() => scrollUsed(1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
+                <button type="button" onClick={() => slideUsed(1)} className="w-10 h-10 rounded-full glass hover:bg-white/75 transition-colors">
                   <ArrowRight size={16} className="mx-auto" />
                 </button>
               </div>
             </div>
           </div>
-          <div ref={usedRef} className="overflow-x-auto scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
-            <div className="flex gap-6 md:gap-8 pb-4 snap-x snap-mandatory min-w-0">
+          <div className="overflow-hidden -mx-4 px-4 md:-mx-6 md:px-6">
+            <motion.div
+              ref={usedInnerRef}
+              className="flex gap-6 md:gap-8 pb-4 min-w-0"
+              animate={{ x: usedX }}
+              transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+            >
               {usedProducts.map((item) => (
-                <div key={item.id} className="shrink-0 w-70 sm:w-80 snap-start">
+                <div key={item.id} className="shrink-0 w-70 sm:w-80">
                   <ProductCard product={item} />
                 </div>
               ))}
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>

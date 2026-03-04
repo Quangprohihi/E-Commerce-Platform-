@@ -1,8 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  ShoppingBag,
+  Star,
+  Package,
+  ClipboardList,
+  BadgeCheck,
+  Users,
+  PackageSearch,
+  ShieldCheck,
+  AlertTriangle,
+  Clock3,
+  TrendingUp,
+  CircleCheckBig,
+  Bell,
+  ChartColumn,
+  Settings,
+  UserCircle,
+  Mail,
+  Phone,
+  AtSign,
+  RefreshCw,
+} from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { getRoleHomePath } from '../utils/auth';
 import { ATTR_TRANSLATIONS, translateAttr } from '../utils/translations';
+import DashboardLayout from '../components/dashboard/DashboardLayout';
 
 function formatDate(value) {
   if (!value) return '--';
@@ -20,20 +44,25 @@ function PageShell({ title, subtitle, children }) {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen pt-24 pb-16">
-      <div className="max-w-360 mx-auto px-4 sm:px-6 lg:px-10">
+    <DashboardLayout title={title} subtitle={subtitle}>
+      <div>
         <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Xin chào {user?.fullName || 'bạn'}</p>
         <h1 className="font-serif text-3xl md:text-5xl text-primary mt-2">{title}</h1>
         <p className="text-text-muted mt-3">{subtitle}</p>
         <div className="mt-6">{children}</div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, icon: Icon, accentColor = '#c9a96e' }) {
   return (
-    <div className="glass rounded-2xl p-5">
+    <div className="glass rounded-2xl p-5 relative overflow-hidden">
+      {Icon ? (
+        <div className="absolute top-4 right-4 rounded-xl p-2" style={{ background: `${accentColor}1a` }}>
+          <Icon size={18} style={{ color: accentColor }} strokeWidth={1.6} />
+        </div>
+      ) : null}
       <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{label}</p>
       <p className="font-serif text-3xl mt-2 text-primary">{value}</p>
     </div>
@@ -87,22 +116,100 @@ function DataTable({ columns, rows }) {
 }
 
 export function BuyerDashboardPage() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [reviews, setReviews] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const [ordersRes, reviewsRes] = await Promise.all([
+          api.get('/orders'),
+          user?.id ? api.get('/reviews', { params: { userId: user.id, limit: 100 } }) : Promise.resolve({ data: { data: { items: [] } } }),
+        ]);
+
+        if (cancelled) return;
+
+        setOrders(ordersRes.data?.data || []);
+        setReviews(reviewsRes.data?.data?.items || []);
+      } catch {
+        if (cancelled) return;
+        setOrders([]);
+        setReviews([]);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const pendingOrders = useMemo(() => orders.filter((item) => item.status === 'PENDING').length, [orders]);
+  const deliveredOrders = useMemo(() => orders.filter((item) => item.status === 'DELIVERED').length, [orders]);
+
+  const topProducts = useMemo(() => {
+    const bucket = new Map();
+
+    orders.forEach((order) => {
+      (order.details || []).forEach((detail) => {
+        const key = detail.product?.id || detail.productId || detail.product?.name;
+        if (!key) return;
+        const current = bucket.get(key) || { name: detail.product?.name || 'Sản phẩm', qty: 0 };
+        current.qty += Number(detail.quantity || 1);
+        bucket.set(key, current);
+      });
+    });
+
+    return Array.from(bucket.values()).sort((a, b) => b.qty - a.qty).slice(0, 3);
+  }, [orders]);
+
+  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5), [orders]);
+
   return (
     <PageShell title="Trang Buyer" subtitle="Theo dõi đơn hàng, hồ sơ cá nhân và đánh giá sản phẩm.">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/account/orders" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Buyer</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Đơn hàng của tôi</p>
-        </Link>
-        <Link to="/account/reviews" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Buyer</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Đánh giá của tôi</p>
-        </Link>
-        <Link to="/account/profile" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Buyer</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Hồ sơ tài khoản</p>
-        </Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard label="Tổng đơn" value={orders.length} icon={ShoppingBag} accentColor="#3B82F6" />
+        <StatCard label="Đang chờ" value={pendingOrders} icon={Clock3} accentColor="#3B82F6" />
+        <StatCard label="Đã giao" value={deliveredOrders} icon={CircleCheckBig} accentColor="#3B82F6" />
+        <StatCard label="Reviews" value={reviews.length} icon={Star} accentColor="#3B82F6" />
       </div>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <SectionCard title="Cần chú ý">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> {pendingOrders > 0 ? `${pendingOrders} đơn đang chờ xử lý` : 'Không có đơn chờ xử lý'}</p>
+            <p className="flex items-center gap-2"><Bell size={16} className="text-blue-600" /> {reviews.length > 0 ? `${reviews.length} đánh giá đã gửi` : 'Chưa có đánh giá mới'}</p>
+            <p className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-600" /> Theo dõi lịch sử để mua lại nhanh hơn</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Đơn gần đây">
+          <div className="space-y-2">
+            {recentOrders.length === 0 ? <EmptyState text="Chưa có đơn hàng gần đây." /> : recentOrders.map((order) => (
+              <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 text-sm flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-primary">#{order.id.slice(0, 8)}</p>
+                  <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
+                </div>
+                <span className="text-xs uppercase tracking-[0.08em] text-text-muted">{order.status || '--'}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Top sản phẩm đã mua">
+          <div className="space-y-2">
+            {topProducts.length === 0 ? <EmptyState text="Chưa đủ dữ liệu sản phẩm." /> : topProducts.map((item) => (
+              <div key={item.name} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 flex items-center justify-between">
+                <p className="text-sm text-primary truncate pr-2">{item.name}</p>
+                <span className="text-xs text-text-muted">x{item.qty}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
+
     </PageShell>
   );
 }
@@ -134,8 +241,8 @@ export function BuyerOrdersPage() {
   return (
     <PageShell title="Đơn hàng của Buyer" subtitle="Theo dõi trạng thái và tổng giá trị đơn hàng của bạn.">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <StatCard label="Tổng đơn" value={totalOrders} />
-        <StatCard label="Đang chờ" value={pendingOrders} />
+        <StatCard label="Tổng đơn" value={totalOrders} icon={ShoppingBag} accentColor="#3B82F6" />
+        <StatCard label="Đang chờ" value={pendingOrders} icon={ClipboardList} accentColor="#3B82F6" />
       </div>
 
       <SectionCard title="Danh sách đơn hàng">
@@ -225,13 +332,93 @@ export function BuyerProfilePage() {
 }
 
 export function SellerDashboardPage() {
+  const { user } = useAuth();
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const [productsRes, ordersRes] = await Promise.all([
+          api.get('/products', { params: { limit: 100 } }),
+          api.get('/orders/manage', { params: { limit: 20, page: 1 } }),
+        ]);
+
+        if (cancelled) return;
+        const productItems = productsRes.data?.data?.items || [];
+        const ownProducts = productItems.filter((item) => item.seller?.id === user?.id);
+        setProducts(ownProducts);
+        setOrders(ordersRes.data?.data?.items || []);
+      } catch {
+        if (cancelled) return;
+        setProducts([]);
+        setOrders([]);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const lowStockCount = useMemo(() => products.filter((item) => Number(item.stock || 0) < 5).length, [products]);
+  const pendingOrders = useMemo(() => orders.filter((item) => item.status === 'PENDING').length, [orders]);
+  const processingOrders = useMemo(() => orders.filter((item) => item.status === 'PROCESSING').length, [orders]);
+  const estimatedRevenue = useMemo(() => orders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0), [orders]);
+  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5), [orders]);
+
+  const topProducts = useMemo(() => {
+    const sorted = [...products]
+      .sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0))
+      .slice(0, 3);
+    return sorted;
+  }, [products]);
+
   return (
     <PageShell title="Seller Dashboard" subtitle="Quản lý sản phẩm, đơn hàng và trạng thái KYC của người bán.">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/seller/products" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Seller</p><p className="font-serif text-2xl mt-2 text-primary">Sản phẩm của tôi</p></Link>
-        <Link to="/seller/orders" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Seller</p><p className="font-serif text-2xl mt-2 text-primary">Quản lý đơn hàng</p></Link>
-        <Link to="/seller/kyc" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors"><p className="text-xs uppercase tracking-[0.16em] text-text-muted">Seller</p><p className="font-serif text-2xl mt-2 text-primary">KYC Seller</p></Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard label="Sản phẩm" value={products.length} icon={Package} accentColor="#10B981" />
+        <StatCard label="Đơn chờ" value={pendingOrders} icon={Clock3} accentColor="#10B981" />
+        <StatCard label="Đang xử lý" value={processingOrders} icon={ClipboardList} accentColor="#10B981" />
+        <StatCard label="Doanh thu ước tính" value={currency(estimatedRevenue)} icon={TrendingUp} accentColor="#10B981" />
       </div>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <SectionCard title="Cảnh báo vận hành">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> {lowStockCount > 0 ? `${lowStockCount} sản phẩm sắp hết hàng` : 'Tồn kho đang ổn định'}</p>
+            <p className="flex items-center gap-2"><Bell size={16} className="text-blue-600" /> {pendingOrders > 0 ? `${pendingOrders} đơn cần xác nhận` : 'Không có đơn chờ xác nhận'}</p>
+            <p className="flex items-center gap-2"><BadgeCheck size={16} className="text-emerald-600" /> KYC hiện tại: {user?.sellerProfile?.kycStatus || 'CHƯA GỬI HỒ SƠ'}</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Đơn gần đây">
+          <div className="space-y-2">
+            {recentOrders.length === 0 ? <EmptyState text="Chưa có đơn hàng mới." /> : recentOrders.map((order) => (
+              <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 text-sm flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-primary">#{order.id.slice(0, 8)}</p>
+                  <p className="text-xs text-text-muted">{currency(order.totalAmount || 0)}</p>
+                </div>
+                <span className="text-xs uppercase tracking-[0.08em] text-text-muted">{order.status || '--'}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Top sản phẩm tồn kho">
+          <div className="space-y-2">
+            {topProducts.length === 0 ? <EmptyState text="Chưa có dữ liệu sản phẩm." /> : topProducts.map((item) => (
+              <div key={item.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 flex items-center justify-between gap-3">
+                <p className="text-sm text-primary truncate">{item.name}</p>
+                <span className="text-xs text-text-muted">Kho: {item.stock}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
+
     </PageShell>
   );
 }
@@ -455,15 +642,6 @@ export function SellerProductsPage() {
 
   return (
     <PageShell title="Sản phẩm của Seller" subtitle="Danh sách sản phẩm hiện tại thuộc cửa hàng của bạn.">
-      <div className="mb-4">
-        <Link
-          to="/seller"
-          className="inline-flex items-center h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] hover:bg-white/70 transition-colors"
-        >
-          Quay lại Seller Dashboard
-        </Link>
-      </div>
-
       {user?.sellerProfile?.kycStatus !== 'APPROVED' ? (
         <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-6 flex flex-col items-center justify-center text-center">
           <p className="text-amber-800 font-medium text-lg">Tài khoản chưa được phê duyệt</p>
@@ -887,8 +1065,6 @@ export function SellerOrdersPage() {
     <ManageOrdersPage
       title="Đơn hàng Seller"
       subtitle="Xem danh sách đơn hàng thuộc sản phẩm của bạn. Lọc theo mã đơn, buyer hoặc trạng thái."
-      backPath="/seller"
-      backLabel="Quay lại Seller Dashboard"
     />
   );
 }
@@ -921,15 +1097,6 @@ export function SellerKycPage() {
 
   return (
     <PageShell title="KYC Seller" subtitle="Gửi hồ sơ xác minh và theo dõi trạng thái duyệt.">
-      <div className="mb-4">
-        <Link
-          to="/seller"
-          className="inline-flex items-center h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] hover:bg-white/70 transition-colors"
-        >
-          Quay lại Seller Dashboard
-        </Link>
-      </div>
-
       <SectionCard title="Nộp hồ sơ KYC">
         <form onSubmit={submitKyc} className="space-y-4">
           <input value={form.shopName} onChange={(event) => setForm((prev) => ({ ...prev, shopName: event.target.value }))} placeholder="Tên cửa hàng" className="w-full h-11 rounded-xl border border-black/10 px-4 bg-white/70" required />
@@ -944,34 +1111,88 @@ export function SellerKycPage() {
 }
 
 export function StaffDashboardPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
+  const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [sellers, setSellers] = useState([]);
 
-  const staffCards = [
-    { to: '/staff/customers', label: 'Staff', title: 'Quản lý khách hàng' },
-    { to: '/staff/sellers', label: 'Staff', title: 'Quản lý Seller' },
-    { to: '/admin/kyc', label: 'Staff', title: 'Duyệt KYC Seller' },
-    { to: '/staff/products', label: 'Staff', title: 'Quản lý sản phẩm' },
-    { to: '/staff/reviews', label: 'Staff', title: 'Quản lý phản hồi' },
-    { to: '/staff/orders', label: 'Staff', title: 'Quản lý đơn hàng' },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const [productsRes, reviewsRes, ordersRes, sellersRes] = await Promise.all([
+          api.get('/products', { params: { limit: 100 } }),
+          api.get('/reviews', { params: { limit: 100 } }),
+          api.get('/orders/manage', { params: { limit: 20, page: 1 } }),
+          api.get('/admin/users', { params: { role: 'SELLER', limit: 100 } }),
+        ]);
+
+        if (cancelled) return;
+        setProducts(productsRes.data?.data?.items || []);
+        setReviews(reviewsRes.data?.data?.items || []);
+        setOrders(ordersRes.data?.data?.items || []);
+        setSellers(sellersRes.data?.data?.items || []);
+      } catch {
+        if (cancelled) return;
+        setProducts([]);
+        setReviews([]);
+        setOrders([]);
+        setSellers([]);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const pendingKyc = useMemo(() => sellers.filter((item) => (item.sellerProfile?.kycStatus || 'PENDING') === 'PENDING').length, [sellers]);
+  const lowStock = useMemo(() => products.filter((item) => Number(item.stock || 0) < 5).length, [products]);
+  const pendingOrders = useMemo(() => orders.filter((item) => item.status === 'PENDING').length, [orders]);
+  const flaggedReviews = useMemo(() => reviews.filter((item) => Number(item.rating || 0) <= 2).length, [reviews]);
+  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5), [orders]);
 
   return (
     <PageShell title="Staff Dashboard" subtitle="Vận hành hệ thống: khách hàng, seller, sản phẩm, phản hồi và đơn hàng.">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {staffCards.map((card) => (
-          <Link key={card.to} to={card.to} className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{card.label}</p>
-            <p className="font-serif text-2xl mt-2 text-primary">{card.title}</p>
-          </Link>
-        ))}
-        {isAdmin && (
-          <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
-            <p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p>
-          </Link>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard label="KYC chờ duyệt" value={pendingKyc} icon={ShieldCheck} accentColor="#8B5CF6" />
+        <StatCard label="Đơn chờ xử lý" value={pendingOrders} icon={Clock3} accentColor="#8B5CF6" />
+        <StatCard label="Review cần chú ý" value={flaggedReviews} icon={Star} accentColor="#8B5CF6" />
+        <StatCard label="SP sắp hết hàng" value={lowStock} icon={PackageSearch} accentColor="#8B5CF6" />
       </div>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <SectionCard title="Queue cảnh báo">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> {pendingKyc} hồ sơ KYC đang chờ</p>
+            <p className="flex items-center gap-2"><Bell size={16} className="text-violet-600" /> {flaggedReviews} review điểm thấp cần kiểm tra</p>
+            <p className="flex items-center gap-2"><ClipboardList size={16} className="text-blue-600" /> {pendingOrders} đơn cần can thiệp</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Đơn mới nhất">
+          <div className="space-y-2">
+            {recentOrders.length === 0 ? <EmptyState text="Không có đơn mới." /> : recentOrders.map((order) => (
+              <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 text-sm flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-primary">#{order.id.slice(0, 8)}</p>
+                  <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
+                </div>
+                <span className="text-xs uppercase tracking-[0.08em] text-text-muted">{order.status || '--'}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Top danh mục xử lý">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center justify-between rounded-xl border border-black/10 bg-white/60 px-3 py-2"><span>Seller</span><span>{sellers.length}</span></p>
+            <p className="flex items-center justify-between rounded-xl border border-black/10 bg-white/60 px-3 py-2"><span>Sản phẩm</span><span>{products.length}</span></p>
+            <p className="flex items-center justify-between rounded-xl border border-black/10 bg-white/60 px-3 py-2"><span>Reviews</span><span>{reviews.length}</span></p>
+          </div>
+        </SectionCard>
+      </div>
+
     </PageShell>
   );
 }
@@ -1174,8 +1395,6 @@ export function StaffOrdersPage() {
     <ManageOrdersPage
       title="Manage Orders"
       subtitle="Xem đầy đủ danh sách đơn hàng, lọc theo mã đơn, buyer hoặc trạng thái."
-      backPath="/staff"
-      backLabel="Quay lại Staff Dashboard"
     />
   );
 }
@@ -1184,56 +1403,93 @@ export function AdminDashboardPage() {
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [orders, setOrders] = useState([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [u, p, r] = await Promise.all([
+        const [u, p, r, o] = await Promise.all([
           api.get('/admin/users', { params: { limit: 100 } }),
           api.get('/products', { params: { limit: 100 } }),
           api.get('/reviews', { params: { limit: 100 } }),
+          api.get('/orders/manage', { params: { limit: 50, page: 1 } }),
         ]);
         setUsers(u.data?.data?.items || []);
         setProducts(p.data?.data?.items || []);
         setReviews(r.data?.data?.items || []);
+        setOrders(o.data?.data?.items || []);
       } catch {
         setUsers([]);
         setProducts([]);
         setReviews([]);
+        setOrders([]);
       }
     };
     load();
   }, []);
 
   const pendingKyc = useMemo(() => users.filter((item) => item.sellerProfile?.kycStatus === 'PENDING').length, [users]);
+  const activeUsers = useMemo(() => users.filter((item) => ['BUYER', 'SELLER'].includes(item.role)).length, [users]);
+  const totalRevenue = useMemo(() => orders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0), [orders]);
+  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6), [orders]);
+  const topCategories = useMemo(() => {
+    const bucket = new Map();
+
+    products.forEach((product) => {
+      const key = product.category?.name || 'Khác';
+      bucket.set(key, (bucket.get(key) || 0) + 1);
+    });
+
+    return Array.from(bucket.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+  }, [products]);
 
   return (
     <PageShell title="Admin Dashboard" subtitle="Bảng tổng quan số liệu chính của hệ thống.">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Users" value={users.length} />
-        <StatCard label="Products" value={products.length} />
-        <StatCard label="Reviews" value={reviews.length} />
-        <StatCard label="KYC Pending" value={pendingKyc} />
+        <StatCard label="Active Users" value={activeUsers} icon={Users} accentColor="#F59E0B" />
+        <StatCard label="Tổng đơn" value={orders.length} icon={ShoppingBag} accentColor="#F59E0B" />
+        <StatCard label="Doanh thu" value={currency(totalRevenue)} icon={ChartColumn} accentColor="#F59E0B" />
+        <StatCard label="KYC Pending" value={pendingKyc} icon={ShieldCheck} accentColor="#F59E0B" />
       </div>
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <Link to="/admin/kyc" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Duyệt KYC Seller</p>
-        </Link>
-        <Link to="/admin/users" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Quản lý người dùng</p>
-        </Link>
-        <Link to="/admin/reports" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Báo cáo & Thống kê</p>
-          <p className="text-sm text-text-muted mt-1">Xuất PDF/Excel</p>
-        </Link>
-        <Link to="/admin/system" className="glass rounded-2xl p-5 hover:bg-white/80 transition-colors">
-          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Admin</p>
-          <p className="font-serif text-2xl mt-2 text-primary">Cấu hình hệ thống</p>
-        </Link>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <SectionCard title="Cảnh báo hệ thống">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> {pendingKyc} hồ sơ KYC cần duyệt</p>
+            <p className="flex items-center gap-2"><Bell size={16} className="text-blue-600" /> {reviews.length} phản hồi cần theo dõi chất lượng</p>
+            <p className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-600" /> Theo dõi báo cáo để tối ưu chuyển đổi</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Hoạt động mới nhất">
+          <div className="space-y-2">
+            {recentOrders.length === 0 ? <EmptyState text="Chưa có hoạt động đơn hàng." /> : recentOrders.map((order) => (
+              <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 text-sm flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-primary">#{order.id.slice(0, 8)}</p>
+                  <p className="text-xs text-text-muted">{currency(order.totalAmount || 0)}</p>
+                </div>
+                <span className="text-xs uppercase tracking-[0.08em] text-text-muted">{order.status || '--'}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Top danh mục">
+          <div className="space-y-2">
+            {topCategories.length === 0 ? <EmptyState text="Chưa có dữ liệu danh mục." /> : topCategories.map((item) => (
+              <div key={item.name} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 flex items-center justify-between">
+                <p className="text-sm text-primary truncate">{item.name}</p>
+                <span className="text-xs text-text-muted">{item.count} SP</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
       </div>
+
     </PageShell>
   );
 }
@@ -1414,15 +1670,6 @@ export function AdminReportsPage() {
 
   return (
     <PageShell title="Reports" subtitle="Báo cáo tổng hợp và xuất file PDF/Excel.">
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Link
-          to="/admin"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-black/15 text-xs uppercase tracking-[0.12em] hover:bg-white/80"
-        >
-          Quay lại Dashboard
-        </Link>
-      </div>
-
       <div className="glass rounded-2xl p-5 mb-6">
         <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Chọn loại báo cáo</h2>
         <div className="flex flex-wrap gap-2">
@@ -1590,7 +1837,7 @@ export function AdminReportsPage() {
                       <tr key={row.id} className="border-b border-black/5">
                         <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
                         <td className="py-2 pr-3">{row.rating}</td>
-                        <td className="py-2 pr-3 max-w-[200px] truncate">{row.comment || '--'}</td>
+                        <td className="py-2 pr-3 max-w-50 truncate">{row.comment || '--'}</td>
                         <td className="py-2 pr-3">{row.userName}</td>
                         <td className="py-2 pr-3">{row.productName}</td>
                         <td className="py-2 pr-3">{formatDate(row.createdAt)}</td>
@@ -1697,7 +1944,7 @@ export function AdminKycPage() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && applySearch()}
             placeholder="Tìm theo email, tên, SĐT"
-            className="flex-1 min-w-[200px] h-10 px-4 rounded-xl border border-black/10 bg-white/70"
+            className="flex-1 min-w-50 h-10 px-4 rounded-xl border border-black/10 bg-white/70"
           />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 px-3 rounded-xl border border-black/10 bg-white/70">
             <option value="">Tất cả trạng thái KYC</option>
@@ -1765,6 +2012,185 @@ export function AdminSystemPage() {
           <p>- Quản lý order tổng hiện chưa có endpoint list-all từ backend, đang hỗ trợ tra cứu theo order ID.</p>
         </div>
       </SectionCard>
+    </PageShell>
+  );
+}
+
+export function SettingsPage() {
+  const { user, setUser } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [form, setForm] = useState({ fullName: '', phone: '', avatar: '' });
+  const needProfileCompletion = location.state?.reason === 'complete-profile';
+  const redirectFrom = location.state?.from;
+
+  useEffect(() => {
+    setForm({
+      fullName: user?.fullName || '',
+      phone: user?.phone || '',
+      avatar: user?.avatar || '',
+    });
+  }, [user?.fullName, user?.phone, user?.avatar]);
+
+  const syncProfile = async () => {
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await api.get('/auth/me');
+      const nextUser = response.data?.data || null;
+      setUser(nextUser);
+      if (nextUser) localStorage.setItem('currentUser', JSON.stringify(nextUser));
+      setMessage('Đã đồng bộ thông tin tài khoản mới nhất.');
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Không thể đồng bộ thông tin tài khoản.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage('');
+    try {
+      const response = await api.put('/auth/me', {
+        fullName: form.fullName,
+        phone: form.phone,
+        avatar: form.avatar || null,
+      });
+      const nextUser = response.data?.data || null;
+      setUser(nextUser);
+      if (nextUser) localStorage.setItem('currentUser', JSON.stringify(nextUser));
+      setMessage('Cập nhật thông tin cá nhân thành công.');
+
+      const targetPath = needProfileCompletion && redirectFrom && redirectFrom !== '/settings'
+        ? redirectFrom
+        : getRoleHomePath(nextUser?.role);
+
+      setTimeout(() => {
+        navigate(targetPath || '/', { replace: true });
+      }, 450);
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Không thể lưu thông tin cá nhân.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PageShell title="Cài đặt" subtitle="Quản lý tài khoản và thông tin cá nhân của bạn.">
+      {needProfileCompletion ? (
+        <div className="mb-6">
+          <MessageBox type="info" text={`Bạn cần cập nhật đầy đủ thông tin cá nhân để tiếp tục sử dụng hệ thống.${redirectFrom ? ` Trang trước đó: ${redirectFrom}` : ''}`} />
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Role" value={user?.role || '--'} icon={ShieldCheck} accentColor="#6b6b6b" />
+        <StatCard label="KYC" value={user?.sellerProfile?.kycStatus || '--'} icon={BadgeCheck} accentColor="#6b6b6b" />
+        <StatCard label="Shop" value={user?.sellerProfile?.shopName || '--'} icon={Package} accentColor="#6b6b6b" />
+        <StatCard label="Account" value={user?.email ? 'Đang hoạt động' : '--'} icon={Settings} accentColor="#6b6b6b" />
+      </div>
+
+      <SectionCard
+        title="Thông tin cá nhân"
+        action={(
+          <button
+            type="button"
+            onClick={syncProfile}
+            disabled={loading}
+            className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] inline-flex items-center gap-2 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Đang đồng bộ' : 'Đồng bộ'}
+          </button>
+        )}
+      >
+        <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-4">
+          Để tiếp tục sử dụng các tính năng có đăng nhập, vui lòng điền đầy đủ họ tên và số điện thoại.
+        </p>
+
+        <form onSubmit={saveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="rounded-xl border border-black/10 bg-white/60 p-4">
+            <label className="text-text-muted flex items-center gap-2"><UserCircle size={15} /> Họ và tên *</label>
+            <input
+              value={form.fullName}
+              onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))}
+              className="mt-2 w-full h-10 rounded-xl border border-black/10 px-3 bg-white/80"
+              placeholder="Nhập họ và tên"
+              required
+            />
+          </div>
+          <div className="rounded-xl border border-black/10 bg-white/60 p-4">
+            <label className="text-text-muted flex items-center gap-2"><Mail size={15} /> Email</label>
+            <input
+              value={user?.email || ''}
+              className="mt-2 w-full h-10 rounded-xl border border-black/10 px-3 bg-white/70 text-text-muted"
+              disabled
+            />
+          </div>
+          <div className="rounded-xl border border-black/10 bg-white/60 p-4">
+            <label className="text-text-muted flex items-center gap-2"><Phone size={15} /> Số điện thoại *</label>
+            <input
+              value={form.phone}
+              onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+              className="mt-2 w-full h-10 rounded-xl border border-black/10 px-3 bg-white/80"
+              placeholder="Nhập số điện thoại"
+              required
+            />
+          </div>
+          <div className="rounded-xl border border-black/10 bg-white/60 p-4">
+            <label className="text-text-muted flex items-center gap-2"><AtSign size={15} /> Ảnh đại diện URL</label>
+            <input
+              value={form.avatar}
+              onChange={(event) => setForm((prev) => ({ ...prev, avatar: event.target.value }))}
+              className="mt-2 w-full h-10 rounded-xl border border-black/10 px-3 bg-white/80"
+              placeholder="https://..."
+            />
+          </div>
+
+          <div className="md:col-span-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-text-muted">User ID: <span className="text-primary break-all">{user?.id || '--'}</span></p>
+            <button
+              type="submit"
+              disabled={saving}
+              className="h-10 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-50"
+            >
+              {saving ? 'Đang lưu...' : 'Lưu thông tin'}
+            </button>
+          </div>
+        </form>
+
+        {message ? (
+          <div className="mt-4">
+            <MessageBox type={message.includes('thành công') || message.includes('Đã đồng bộ') ? 'success' : 'error'} text={message} />
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <SectionCard title="Trạng thái bảo mật tài khoản">
+          <div className="space-y-2 text-sm text-text-muted">
+            <p className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-600" /> Phiên đăng nhập được bảo vệ bằng token.</p>
+            <p className="flex items-center gap-2"><Bell size={16} className="text-blue-600" /> Khuyến nghị cập nhật đầy đủ số điện thoại để nhận thông báo đơn hàng.</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Thông tin seller (nếu có)">
+          {user?.role === 'SELLER' || user?.sellerProfile ? (
+            <div className="space-y-2 text-sm text-text-muted">
+              <p className="flex items-center justify-between rounded-xl border border-black/10 bg-white/60 px-3 py-2"><span>Tên shop</span><span className="text-primary">{user?.sellerProfile?.shopName || '--'}</span></p>
+              <p className="flex items-center justify-between rounded-xl border border-black/10 bg-white/60 px-3 py-2"><span>Trạng thái KYC</span><span className="text-primary">{user?.sellerProfile?.kycStatus || '--'}</span></p>
+              <p className="rounded-xl border border-black/10 bg-white/60 px-3 py-2">{user?.sellerProfile?.description || 'Chưa có mô tả cửa hàng.'}</p>
+            </div>
+          ) : (
+            <EmptyState text="Tài khoản hiện tại không có hồ sơ seller." />
+          )}
+        </SectionCard>
+      </div>
     </PageShell>
   );
 }

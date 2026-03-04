@@ -30,6 +30,7 @@ import {
   StaffReviewsPage,
   StaffSellersPage,
   StaffDashboardPage,
+  SettingsPage,
   UnauthorizedPage,
 } from './pages/RolePages';
 
@@ -246,6 +247,17 @@ function App() {
             <ProtectedRoute>
               <RoleRoute allowedRoles={['ADMIN']}>
                 <AdminUsersPage />
+              </RoleRoute>
+            </ProtectedRoute>
+          )}
+        />
+
+        <Route
+          path="settings"
+          element={(
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={['BUYER', 'SELLER', 'STAFF', 'ADMIN']}>
+                <SettingsPage />
               </RoleRoute>
             </ProtectedRoute>
           )}

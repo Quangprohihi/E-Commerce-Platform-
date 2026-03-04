@@ -12,11 +12,17 @@ function LoadingScreen() {
 
 export function ProtectedRoute({ children }) {
   const location = useLocation();
-  const { initializing, isAuthenticated } = useAuth();
+  const { initializing, isAuthenticated, user } = useAuth();
 
   if (initializing) return <LoadingScreen />;
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  const isProfileComplete = Boolean(user?.fullName?.trim()) && Boolean(user?.phone?.trim());
+  const isSettingsPage = location.pathname.startsWith('/settings');
+  if (!isProfileComplete && !isSettingsPage) {
+    return <Navigate to="/settings" replace state={{ from: location.pathname, reason: 'complete-profile' }} />;
   }
 
   return children;
