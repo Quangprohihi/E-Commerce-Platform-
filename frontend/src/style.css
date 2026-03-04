@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root {
+@theme {
   /* Off-white luxury - Apple Store / Vogue style */
   --color-primary: #1a1a1a;
   --color-primary-soft: #2d2d2d;

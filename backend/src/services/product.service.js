@@ -1,6 +1,30 @@
 const prisma = require('../config/prisma');
 const { cloudinary, hasCloudinaryConfig } = require('../config/cloudinary');
 
+// Vietnamese transliteration map for slug generation
+const VIETNAMESE_MAP = {
+  'à': 'a', 'á': 'a', 'ả': 'a', 'ã': 'a', 'ạ': 'a', 'ă': 'a', 'ằ': 'a', 'ắ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'ặ': 'a',
+  'â': 'a', 'ầ': 'a', 'ấ': 'a', 'ẩ': 'a', 'ẫ': 'a', 'ậ': 'a', 'đ': 'd',
+  'è': 'e', 'é': 'e', 'ẻ': 'e', 'ẽ': 'e', 'ẹ': 'e', 'ê': 'e', 'ề': 'e', 'ế': 'e', 'ể': 'e', 'ễ': 'e', 'ệ': 'e',
+  'ì': 'i', 'í': 'i', 'ỉ': 'i', 'ĩ': 'i', 'ị': 'i',
+  'ò': 'o', 'ó': 'o', 'ỏ': 'o', 'õ': 'o', 'ọ': 'o', 'ô': 'o', 'ồ': 'o', 'ố': 'o', 'ổ': 'o', 'ỗ': 'o', 'ộ': 'o',
+  'ơ': 'o', 'ờ': 'o', 'ớ': 'o', 'ở': 'o', 'ỡ': 'o', 'ợ': 'o',
+  'ù': 'u', 'ú': 'u', 'ủ': 'u', 'ũ': 'u', 'ụ': 'u', 'ư': 'u', 'ừ': 'u', 'ứ': 'u', 'ử': 'u', 'ữ': 'u', 'ự': 'u',
+  'ỳ': 'y', 'ý': 'y', 'ỷ': 'y', 'ỹ': 'y', 'ỵ': 'y',
+};
+
+function generateVietnameseSlug(text) {
+  const transliterated = text
+    .toLowerCase()
+    .split('')
+    .map(ch => VIETNAMESE_MAP[ch] || ch)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const suffix = Math.random().toString(36).substring(2, 6);
+  return `${transliterated || 'product'}-${suffix}`;
+}
+
 function flattenImageValues(images) {
   if (!images) return [];
   if (Array.isArray(images)) return images;
@@ -149,7 +173,7 @@ async function create(actorId, userRole, data) {
   const payload = { ...data };
   delete payload.sellerId;
 
-  const slug = data.slug || data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const slug = data.slug || generateVietnameseSlug(data.name);
   const existing = await prisma.product.findUnique({ where: { slug } });
   if (existing) throw Object.assign(new Error('Slug đã tồn tại'), { statusCode: 400 });
   return prisma.product.create({

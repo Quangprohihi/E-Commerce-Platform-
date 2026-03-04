@@ -592,8 +592,8 @@ export function SellerProductsPage() {
         name: form.name,
         categoryId: form.categoryId,
         description: form.description || null,
-        price: Number(form.price),
-        salePrice: form.salePrice ? Number(form.salePrice) : null,
+        price: form.price.toString(),
+        salePrice: form.salePrice ? form.salePrice.toString() : null,
         stock: Number(form.stock || 0),
         condition: form.condition,
         frameShape: form.frameShape,
@@ -657,121 +657,159 @@ export function SellerProductsPage() {
           </Link>
         </div>
       ) : (
-        <SectionCard title={editingProduct ? 'Chỉnh sửa sản phẩm' : 'Tạo sản phẩm mới (Cloudinary Upload)'}>
-          <form onSubmit={handleCreateProduct} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              value={form.name}
-              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="Tên sản phẩm"
-              className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
-              required
-            />
-            <select
-              value={form.categoryId}
-              onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-              required
-              disabled={categoriesLoading}
-              title="Danh mục"
-            >
-              <option value="">
-                {categoriesLoading ? 'Đang tải danh mục...' : '— Chọn danh mục —'}
-              </option>
-              {categoriesFromApi.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+        <SectionCard title={editingProduct ? 'Chỉnh sửa sản phẩm' : 'Tạo sản phẩm mới'}>
+          <form onSubmit={handleCreateProduct} className="space-y-5">
+          {/* Row 1: Tên + Danh mục */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Tên sản phẩm *</label>
+              <input
+                value={form.name}
+                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="VD: Kính râm Ray-Ban Aviator Classic"
+                className="w-full h-11 rounded-xl border border-black/10 px-4 bg-white/70"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Danh mục *</label>
+              <select
+                value={form.categoryId}
+                onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+                required
+                disabled={categoriesLoading}
+              >
+                <option value="">
+                  {categoriesLoading ? 'Đang tải danh mục...' : '— Chọn danh mục —'}
+                </option>
+                {categoriesFromApi.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <textarea
-            value={form.description}
-            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-            placeholder="Mô tả sản phẩm"
-            className="w-full min-h-24 rounded-xl border border-black/10 px-4 py-3 bg-white/70"
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.price}
-              onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
-              placeholder="Giá"
-              className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
-              required
-            />
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.salePrice}
-              onChange={(event) => setForm((prev) => ({ ...prev, salePrice: event.target.value }))}
-              placeholder="Giá khuyến mãi"
-              className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
-            />
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.stock}
-              onChange={(event) => setForm((prev) => ({ ...prev, stock: event.target.value }))}
-              placeholder="Tồn kho"
-              className="h-11 rounded-xl border border-black/10 px-4 bg-white/70"
-              required
-            />
-            <select
-              value={form.condition}
-              onChange={(event) => setForm((prev) => ({ ...prev, condition: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-            >
-              {Object.keys(ATTR_TRANSLATIONS.condition).map(k => (
-                <option key={k} value={k}>{translateAttr('condition', k)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select
-              value={form.frameShape}
-              onChange={(event) => setForm((prev) => ({ ...prev, frameShape: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-            >
-              {Object.keys(ATTR_TRANSLATIONS.frameShape).map(k => (
-                <option key={k} value={k}>{translateAttr('frameShape', k)}</option>
-              ))}
-            </select>
-            <select
-              value={form.frameMaterial}
-              onChange={(event) => setForm((prev) => ({ ...prev, frameMaterial: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-            >
-              {Object.keys(ATTR_TRANSLATIONS.frameMaterial).map(k => (
-                <option key={k} value={k}>{translateAttr('frameMaterial', k)}</option>
-              ))}
-            </select>
-            <select
-              value={form.lensType}
-              onChange={(event) => setForm((prev) => ({ ...prev, lensType: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-            >
-              {Object.keys(ATTR_TRANSLATIONS.lensType).map(k => (
-                <option key={k} value={k}>{translateAttr('lensType', k)}</option>
-              ))}
-            </select>
-            <select
-              value={form.gender}
-              onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
-              className="h-11 rounded-xl border border-black/10 px-3 bg-white/70"
-            >
-              {Object.keys(ATTR_TRANSLATIONS.gender).map(k => (
-                <option key={k} value={k}>{translateAttr('gender', k)}</option>
-              ))}
-            </select>
-          </div>
-
+          {/* Row 2: Mô tả */}
           <div>
+            <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Mô tả sản phẩm</label>
+            <textarea
+              value={form.description}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="VD: Kính râm phong cách phi công, tròng phân cực chống UV400, gọng kim loại mạ vàng..."
+              className="w-full min-h-24 rounded-xl border border-black/10 px-4 py-3 bg-white/70"
+            />
+          </div>
+
+          {/* Row 3: Giá, Giá KM, Tồn kho, Tình trạng */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Giá bán (VNĐ) *</label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={form.price}
+                onChange={(event) => setForm((prev) => ({ ...prev, price: event.target.value }))}
+                placeholder="VD: 2500000"
+                className="w-full h-11 rounded-xl border border-black/10 px-4 bg-white/70"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Giá khuyến mãi</label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={form.salePrice}
+                onChange={(event) => setForm((prev) => ({ ...prev, salePrice: event.target.value }))}
+                placeholder="VD: 1990000 (để trống nếu không KM)"
+                className="w-full h-11 rounded-xl border border-black/10 px-4 bg-white/70"
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Tồn kho *</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={form.stock}
+                onChange={(event) => setForm((prev) => ({ ...prev, stock: event.target.value }))}
+                placeholder="VD: 50"
+                className="w-full h-11 rounded-xl border border-black/10 px-4 bg-white/70"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Tình trạng</label>
+              <select
+                value={form.condition}
+                onChange={(event) => setForm((prev) => ({ ...prev, condition: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              >
+                {Object.keys(ATTR_TRANSLATIONS.condition).map(k => (
+                  <option key={k} value={k}>{translateAttr('condition', k)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 4: Hình dáng, Chất liệu, Loại tròng, Giới tính */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Hình dáng gọng</label>
+              <select
+                value={form.frameShape}
+                onChange={(event) => setForm((prev) => ({ ...prev, frameShape: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              >
+                {Object.keys(ATTR_TRANSLATIONS.frameShape).map(k => (
+                  <option key={k} value={k}>{translateAttr('frameShape', k)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Chất liệu gọng</label>
+              <select
+                value={form.frameMaterial}
+                onChange={(event) => setForm((prev) => ({ ...prev, frameMaterial: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              >
+                {Object.keys(ATTR_TRANSLATIONS.frameMaterial).map(k => (
+                  <option key={k} value={k}>{translateAttr('frameMaterial', k)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Loại tròng kính</label>
+              <select
+                value={form.lensType}
+                onChange={(event) => setForm((prev) => ({ ...prev, lensType: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              >
+                {Object.keys(ATTR_TRANSLATIONS.lensType).map(k => (
+                  <option key={k} value={k}>{translateAttr('lensType', k)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Giới tính</label>
+              <select
+                value={form.gender}
+                onChange={(event) => setForm((prev) => ({ ...prev, gender: event.target.value }))}
+                className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+              >
+                {Object.keys(ATTR_TRANSLATIONS.gender).map(k => (
+                  <option key={k} value={k}>{translateAttr('gender', k)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 5: Upload ảnh + Preview */}
+          <div>
+            <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Ảnh sản phẩm {editingProduct ? '' : '*'}</label>
             <input
               type="file"
               accept="image/*"
@@ -779,19 +817,29 @@ export function SellerProductsPage() {
               className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
               required={!editingProduct}
             />
-            <p className="text-xs text-text-muted mt-2">
-              {editingProduct ? 'Chọn ảnh mới nếu muốn thay ảnh hiện tại. Không chọn nếu giữ nguyên ảnh cũ.' : 'Ảnh sẽ được upload lên Cloudinary (free tier), sau đó lưu URL vào DB.'}
+            <p className="text-xs text-text-muted mt-1.5">
+              {editingProduct ? 'Chọn ảnh mới nếu muốn thay. Bỏ trống nếu giữ ảnh cũ.' : 'Chọn 1 ảnh sản phẩm (JPG/PNG/WEBP). Ảnh sẽ được upload lên Cloudinary.'}
             </p>
+            {/* Image Preview */}
+            {imageFile ? (
+              <div className="mt-3 w-32 h-32 rounded-xl border border-black/10 overflow-hidden bg-white/70">
+                <img src={URL.createObjectURL(imageFile)} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            ) : editingProduct?.images?.[0] ? (
+              <div className="mt-3 w-32 h-32 rounded-xl border border-black/10 overflow-hidden bg-white/70">
+                <img src={editingProduct.images[0]} alt="Ảnh hiện tại" className="w-full h-full object-cover" />
+              </div>
+            ) : null}
           </div>
 
           {createError ? <MessageBox type="error" text={createError} /> : null}
           {createMessage ? <MessageBox type="success" text={createMessage} /> : null}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pt-2">
             <button
               type="submit"
               disabled={creating}
-              className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60"
+              className="h-11 px-6 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60"
             >
               {creating ? 'Đang lưu...' : (editingProduct ? 'Cập nhật sản phẩm' : 'Tạo sản phẩm')}
             </button>
@@ -809,6 +857,7 @@ export function SellerProductsPage() {
       </SectionCard>
       )}
 
+      <div className="mt-6">
       <SectionCard title="Danh sách sản phẩm" action={<button type="button" onClick={loadProducts} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}>
         {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
         {error ? <MessageBox type="error" text={error} /> : null}
@@ -833,6 +882,7 @@ export function SellerProductsPage() {
           />
         ) : null}
       </SectionCard>
+      </div>
     </PageShell>
   );
 }
@@ -952,7 +1002,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
         title="Danh sách đơn hàng"
         action={<button type="button" onClick={() => loadOrders(page)} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
       >
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_auto_auto_auto] gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -1020,6 +1070,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
         ) : null}
       </SectionCard>
 
+      <div className="mt-8">
       <SectionCard title="Chi tiết đơn hàng">
         {!order ? (
           <p className="text-text-muted text-sm">Chọn một đơn từ bảng trên và bấm <strong>Xem chi tiết</strong>.</p>
@@ -1056,6 +1107,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
           </div>
         )}
       </SectionCard>
+      </div>
     </PageShell>
   );
 }

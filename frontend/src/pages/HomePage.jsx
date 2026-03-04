@@ -111,10 +111,11 @@ export default function HomePage() {
     const step = el.children[0].offsetWidth + gap;
     const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
     setFeatX((prev) => {
+      if (maxX <= 0) return 0;
+      if (dir > 0 && prev <= -maxX) return 0;
+      if (dir < 0 && prev >= 0) return -maxX;
       const next = prev - dir * step;
-      if (next < -maxX) return 0;
-      if (next > 0) return -maxX;
-      return next;
+      return dir > 0 ? Math.max(next, -maxX) : Math.min(next, 0);
     });
   };
 
@@ -125,10 +126,11 @@ export default function HomePage() {
     const step = el.children[0].offsetWidth + gap;
     const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
     setUsedX((prev) => {
+      if (maxX <= 0) return 0;
+      if (dir > 0 && prev <= -maxX) return 0;
+      if (dir < 0 && prev >= 0) return -maxX;
       const next = prev - dir * step;
-      if (next < -maxX) return 0;
-      if (next > 0) return -maxX;
-      return next;
+      return dir > 0 ? Math.max(next, -maxX) : Math.min(next, 0);
     });
   };
 
@@ -141,8 +143,9 @@ export default function HomePage() {
       const step = el.children[0].offsetWidth + gap;
       const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
       setFeatX((prev) => {
-        const next = prev - step;
-        return next < -maxX ? 0 : next;
+        if (maxX <= 0) return 0;
+        if (prev <= -maxX) return 0;
+        return Math.max(prev - step, -maxX);
       });
     }, 3500);
     return () => window.clearInterval(timer);
@@ -157,8 +160,9 @@ export default function HomePage() {
       const step = el.children[0].offsetWidth + gap;
       const maxX = Math.max(0, el.scrollWidth - el.parentElement.offsetWidth);
       setUsedX((prev) => {
-        const next = prev - step;
-        return next < -maxX ? 0 : next;
+        if (maxX <= 0) return 0;
+        if (prev <= -maxX) return 0;
+        return Math.max(prev - step, -maxX);
       });
     }, 4200);
     return () => window.clearInterval(timer);
@@ -237,27 +241,6 @@ export default function HomePage() {
                     />
                   </AnimatePresence>
                 </div>
-
-                {heroItems.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={prevHero}
-                      className="absolute -left-5 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full flex items-center justify-center bg-white/50 hover:bg-white/80 text-primary/70 hover:text-primary backdrop-blur-xl border border-white/60 shadow-lg transition-all duration-200 hover:scale-105"
-                      aria-label="Sản phẩm trước"
-                    >
-                      <ArrowLeft size={17} strokeWidth={1.8} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={nextHero}
-                      className="absolute -right-5 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full flex items-center justify-center bg-white/50 hover:bg-white/80 text-primary/70 hover:text-primary backdrop-blur-xl border border-white/60 shadow-lg transition-all duration-200 hover:scale-105"
-                      aria-label="Sản phẩm tiếp theo"
-                    >
-                      <ArrowRight size={17} strokeWidth={1.8} />
-                    </button>
-                  </>
-                )}
               </div>
 
               <div className="mt-5 flex items-start justify-between gap-4">

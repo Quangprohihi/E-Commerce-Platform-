@@ -45,7 +45,7 @@ export const DASHBOARD_MENUS = {
     { section: 'Quản lý' },
     { to: '/staff/customers', label: 'Khách hàng', icon: Users },
     { to: '/staff/sellers', label: 'Seller', icon: Store },
-    { to: '/admin/kyc', label: 'Duyệt KYC', icon: BadgeCheck },
+    { to: '/staff/kyc', label: 'Duyệt KYC', icon: BadgeCheck },
     { to: '/staff/products', label: 'Sản phẩm', icon: PackageSearch },
     { to: '/staff/reviews', label: 'Phản hồi', icon: MessageSquare },
     { to: '/staff/orders', label: 'Đơn hàng', icon: ListOrdered },
