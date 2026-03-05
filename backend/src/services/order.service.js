@@ -176,4 +176,20 @@ async function createVnpayPaymentUrl(orderId, userId, req) {
   return { paymentUrl };
 }
 
-module.exports = { create, getMyOrders, getManageOrders, getById, updateStatus, createVnpayPaymentUrl };
+async function simulateNextStatus(orderId, userId) {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw Object.assign(new Error('Đơn hàng không tồn tại'), { statusCode: 404 });
+  if (order.buyerId !== userId) throw Object.assign(new Error('Bạn không có quyền thao tác đơn hàng này'), { statusCode: 403 });
+
+  const flow = { PENDING: 'CONFIRMED', CONFIRMED: 'SHIPPING', SHIPPING: 'DELIVERED' };
+  const nextStatus = flow[order.status];
+  if (!nextStatus) throw Object.assign(new Error('Đơn hàng đã ở trạng thái cuối hoặc đã hủy'), { statusCode: 400 });
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { status: nextStatus },
+    include: { details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } } },
+  });
+}
+
+module.exports = { create, getMyOrders, getManageOrders, getById, updateStatus, createVnpayPaymentUrl, simulateNextStatus };

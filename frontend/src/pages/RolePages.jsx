@@ -21,6 +21,10 @@ import {
   Phone,
   AtSign,
   RefreshCw,
+  Truck,
+  CheckCircle2,
+  CreditCard,
+  ChevronRight,
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -214,12 +218,89 @@ export function BuyerDashboardPage() {
   );
 }
 
+/* ─── Order Status Stepper ─── */
+const ORDER_STEPS = [
+  { key: 'PENDING', label: 'Chờ xác nhận', icon: Clock3, color: '#F59E0B' },
+  { key: 'CONFIRMED', label: 'Đã xác nhận', icon: CreditCard, color: '#3B82F6' },
+  { key: 'SHIPPING', label: 'Đang giao', icon: Truck, color: '#8B5CF6' },
+  { key: 'DELIVERED', label: 'Đã nhận hàng', icon: CheckCircle2, color: '#10B981' },
+];
+
+function OrderStatusStepper({ status }) {
+  const isCancelled = status === 'CANCELLED';
+  const currentIdx = ORDER_STEPS.findIndex((s) => s.key === status);
+
+  if (isCancelled) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-red-50 border border-red-200">
+        <AlertTriangle size={20} className="text-red-500" />
+        <span className="text-red-600 font-medium text-sm uppercase tracking-wide">Đơn hàng đã hủy</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-4">
+      <div className="flex items-center justify-between">
+        {ORDER_STEPS.map((step, idx) => {
+          const isDone = idx <= currentIdx;
+          const isCurrent = idx === currentIdx;
+          const StepIcon = step.icon;
+          return (
+            <div key={step.key} className="flex items-center flex-1 last:flex-none">
+              {/* Step circle */}
+              <div className="flex flex-col items-center relative">
+                <div
+                  className={`w-11 h-11 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
+                    isDone
+                      ? 'border-transparent shadow-lg'
+                      : 'border-black/10 bg-white/60'
+                  } ${isCurrent ? 'scale-110 ring-4 ring-opacity-20' : ''}`}
+                  style={isDone ? { background: step.color, boxShadow: `0 4px 14px ${step.color}40`, ...(isCurrent ? { ringColor: step.color } : {}) } : {}}
+                >
+                  <StepIcon size={18} className={isDone ? 'text-white' : 'text-black/25'} strokeWidth={2} />
+                </div>
+                <span className={`text-[11px] mt-2 font-medium text-center whitespace-nowrap transition-colors duration-300 ${
+                  isDone ? 'text-black/80' : 'text-black/30'
+                }`}>{step.label}</span>
+              </div>
+              {/* Connector line */}
+              {idx < ORDER_STEPS.length - 1 ? (
+                <div className="flex-1 mx-2 mt-[-18px]">
+                  <div className="h-[3px] rounded-full bg-black/5 relative overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      style={{
+                        width: idx < currentIdx ? '100%' : '0%',
+                        background: `linear-gradient(90deg, ${ORDER_STEPS[idx].color}, ${ORDER_STEPS[idx + 1].color})`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function BuyerOrdersPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+
+  // Inline review state
+  const [reviewForm, setReviewForm] = useState({ productId: '', rating: '0', comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewedProductIds, setReviewedProductIds] = useState(new Set());
 
   const loadOrders = async () => {
     setLoading(true);
@@ -234,12 +315,25 @@ export function BuyerOrdersPage() {
     }
   };
 
+  // Load user's existing reviews to know which products are already reviewed
+  const loadReviewedProducts = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await api.get('/reviews', { params: { userId: user.id, limit: 200 } });
+      const items = res.data?.data?.items || [];
+      setReviewedProductIds(new Set(items.map((r) => r.productId)));
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     loadOrders();
-  }, []);
+    loadReviewedProducts();
+  }, [user?.id]);
 
   const viewDetail = async (order) => {
     setError('');
+    setSuccessMsg('');
+    setReviewForm({ productId: '', rating: '0', comment: '' });
     try {
       const response = await api.get(`/orders/${order.id}`);
       setSelectedOrder(response.data?.data || order);
@@ -256,7 +350,6 @@ export function BuyerOrdersPage() {
     setError('');
     try {
       await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'CANCELLED' });
-      setError('');
       const refreshed = await api.get(`/orders/${selectedOrder.id}`);
       setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'CANCELLED' });
       await loadOrders();
@@ -267,14 +360,70 @@ export function BuyerOrdersPage() {
     }
   };
 
+  const simulateNext = async () => {
+    if (!selectedOrder?.id) return;
+    setSimulating(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await api.patch(`/orders/${selectedOrder.id}/simulate-next`);
+      const updated = res.data?.data;
+      setSelectedOrder(updated || selectedOrder);
+      setSuccessMsg(`Chuyển sang ${updated?.status || 'trạng thái mới'} thành công!`);
+      await loadOrders();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể chuyển trạng thái.');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewForm.productId) { setError('Vui lòng chọn sản phẩm.'); return; }
+    if (!parseInt(reviewForm.rating, 10)) { setError('Vui lòng chọn số sao.'); return; }
+    setSubmittingReview(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.post('/reviews', {
+        productId: reviewForm.productId,
+        rating: parseInt(reviewForm.rating, 10),
+        comment: reviewForm.comment || null,
+      });
+      setSuccessMsg('Gửi đánh giá thành công!');
+      setReviewForm({ productId: '', rating: '0', comment: '' });
+      setReviewedProductIds((prev) => new Set([...prev, reviewForm.productId]));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể gửi đánh giá.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const totalOrders = orders.length;
   const pendingOrders = orders.filter((item) => item.status === 'PENDING').length;
+  const deliveredOrders = orders.filter((item) => item.status === 'DELIVERED').length;
+
+  // Products from DELIVERED selected order that haven't been reviewed yet
+  const reviewableProducts = useMemo(() => {
+    if (!selectedOrder || selectedOrder.status !== 'DELIVERED') return [];
+    return (selectedOrder.details || [])
+      .filter((d) => {
+        const pid = d.product?.id || d.productId;
+        return pid && !reviewedProductIds.has(pid);
+      })
+      .map((d) => ({ id: d.product?.id || d.productId, name: d.product?.name || d.productId }));
+  }, [selectedOrder, reviewedProductIds]);
+
+  const nextStatusLabel = selectedOrder ? { PENDING: 'Xác nhận đơn', CONFIRMED: 'Bắt đầu giao', SHIPPING: 'Đã nhận hàng' }[selectedOrder.status] : null;
 
   return (
     <PageShell title="Đơn hàng của Buyer" subtitle="Theo dõi trạng thái và tổng giá trị đơn hàng của bạn.">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <StatCard label="Tổng đơn" value={totalOrders} icon={ShoppingBag} accentColor="#3B82F6" />
-        <StatCard label="Đang chờ" value={pendingOrders} icon={ClipboardList} accentColor="#3B82F6" />
+        <StatCard label="Đang chờ" value={pendingOrders} icon={ClipboardList} accentColor="#F59E0B" />
+        <StatCard label="Đã giao" value={deliveredOrders} icon={CheckCircle2} accentColor="#10B981" />
       </div>
 
       <SectionCard
@@ -282,58 +431,106 @@ export function BuyerOrdersPage() {
         action={<button type="button" onClick={loadOrders} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
       >
         {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
-        {error ? <MessageBox type={error.includes('thành công') ? 'success' : 'error'} text={error} /> : null}
-        {!loading && !error && orders.length === 0 ? <EmptyState text="Bạn chưa có đơn hàng nào." /> : null}
-        {!loading && !error && orders.length > 0 ? (
+        {error && !selectedOrder ? <MessageBox type="error" text={error} /> : null}
+        {!loading && orders.length === 0 ? <EmptyState text="Bạn chưa có đơn hàng nào." /> : null}
+        {!loading && orders.length > 0 ? (
           <DataTable
             columns={['Mã đơn', 'Ngày tạo', 'Trạng thái', 'Tổng tiền', 'Sản phẩm', 'Thao tác']}
-            rows={orders.map((order) => (
-              <tr key={order.id} className="border-b border-black/5">
-                <td className="py-3 pr-3">{order.id.slice(0, 10)}...</td>
-                <td className="py-3 pr-3">{formatDate(order.createdAt)}</td>
-                <td className="py-3 pr-3">{order.status}</td>
-                <td className="py-3 pr-3">{currency(order.totalAmount)}</td>
-                <td className="py-3 pr-3">{order.details?.length || 0} sản phẩm</td>
-                <td className="py-3 pr-3">
-                  <button type="button" onClick={() => viewDetail(order)} className="text-xs uppercase tracking-[0.12em] text-primary hover:text-accent">
-                    Xem chi tiết
-                  </button>
-                </td>
-              </tr>
-            ))}
+            rows={orders.map((order) => {
+              const statusColors = { PENDING: 'bg-amber-50 text-amber-700', CONFIRMED: 'bg-blue-50 text-blue-700', SHIPPING: 'bg-violet-50 text-violet-700', DELIVERED: 'bg-emerald-50 text-emerald-700', CANCELLED: 'bg-red-50 text-red-600' };
+              return (
+                <tr key={order.id} className={`border-b border-black/5 cursor-pointer hover:bg-white/50 transition-colors ${selectedOrder?.id === order.id ? 'bg-primary/5' : ''}`} onClick={() => viewDetail(order)}>
+                  <td className="py-3 pr-3 font-mono text-xs">{order.id.slice(0, 10)}...</td>
+                  <td className="py-3 pr-3">{formatDate(order.createdAt)}</td>
+                  <td className="py-3 pr-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[order.status] || ''}`}>{order.status}</span></td>
+                  <td className="py-3 pr-3 font-medium">{currency(order.totalAmount)}</td>
+                  <td className="py-3 pr-3">{order.details?.length || 0} SP</td>
+                  <td className="py-3 pr-3">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); viewDetail(order); }} className="relative z-10 inline-flex items-center gap-1 text-xs uppercase tracking-[0.12em] text-primary hover:text-accent cursor-pointer py-1 px-2 rounded-lg hover:bg-primary/10 transition-colors">
+                      Xem <ChevronRight size={12} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           />
         ) : null}
       </SectionCard>
 
+      {/* ─── Order Detail with Status Stepper ─── */}
       <div className="mt-8">
         <SectionCard title="Chi tiết đơn hàng">
           {!selectedOrder ? (
-            <p className="text-text-muted text-sm">Chọn một đơn từ bảng trên và bấm <strong>Xem chi tiết</strong>.</p>
+            <p className="text-text-muted text-sm">Chọn một đơn từ bảng trên để xem chi tiết và theo dõi trạng thái.</p>
           ) : (
-            <div className="mt-4 rounded-xl border border-black/10 bg-white/60 p-4 space-y-3">
-              <p><span className="text-text-muted">Mã đơn:</span> {selectedOrder.id}</p>
-              <p><span className="text-text-muted">Ngày tạo:</span> {formatDate(selectedOrder.createdAt)}</p>
-              <p><span className="text-text-muted">Trạng thái:</span> <span className={`font-medium ${selectedOrder.status === 'CANCELLED' ? 'text-red-600' : selectedOrder.status === 'DELIVERED' ? 'text-emerald-600' : 'text-primary'}`}>{selectedOrder.status}</span></p>
-              <p><span className="text-text-muted">Địa chỉ:</span> {selectedOrder.shippingAddress || '--'}</p>
-              <p><span className="text-text-muted">Số điện thoại:</span> {selectedOrder.phone || '--'}</p>
-              {selectedOrder.note ? <p><span className="text-text-muted">Ghi chú:</span> {selectedOrder.note}</p> : null}
-              <p><span className="text-text-muted">Tổng tiền:</span> <span className="font-medium">{currency(selectedOrder.totalAmount)}</span></p>
-              <p><span className="text-text-muted">Thanh toán:</span> {selectedOrder.paymentMethod || 'COD'}</p>
+            <div className="space-y-5">
+              {/* Status Stepper */}
+              <OrderStatusStepper status={selectedOrder.status} />
+
+              {/* Messages */}
+              {error ? <MessageBox type="error" text={error} /> : null}
+              {successMsg ? <MessageBox type="success" text={successMsg} /> : null}
+
+              {/* Simulate Button */}
+              {nextStatusLabel ? (
+                <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/10">
+                  <div className="flex-1">
+                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted">Mô phỏng (Testing)</p>
+                    <p className="text-sm mt-1">Bấm để chuyển sang bước: <strong>{nextStatusLabel}</strong></p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={simulateNext}
+                    disabled={simulating}
+                    className="h-10 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] hover:bg-primary/90 transition-all disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {simulating ? 'Đang xử lý...' : (<>Tiếp theo <ChevronRight size={14} /></>)}
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Order Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-black/10 bg-white/60 p-4 space-y-2 text-sm">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Thông tin đơn</p>
+                  <p><span className="text-text-muted">Mã đơn:</span> <span className="font-mono text-xs">{selectedOrder.id}</span></p>
+                  <p><span className="text-text-muted">Ngày tạo:</span> {formatDate(selectedOrder.createdAt)}</p>
+                  <p><span className="text-text-muted">Thanh toán:</span> {selectedOrder.paymentMethod || 'COD'}</p>
+                  <p><span className="text-text-muted">Tổng tiền:</span> <span className="font-medium text-primary">{currency(selectedOrder.totalAmount)}</span></p>
+                </div>
+                <div className="rounded-xl border border-black/10 bg-white/60 p-4 space-y-2 text-sm">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Giao hàng</p>
+                  <p><span className="text-text-muted">Địa chỉ:</span> {selectedOrder.shippingAddress || '--'}</p>
+                  <p><span className="text-text-muted">SĐT:</span> {selectedOrder.phone || '--'}</p>
+                  {selectedOrder.note ? <p><span className="text-text-muted">Ghi chú:</span> {selectedOrder.note}</p> : null}
+                </div>
+              </div>
+
+              {/* Product list */}
               {selectedOrder.details?.length ? (
-                <div className="rounded-xl border border-black/10 bg-white/70 p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Sản phẩm trong đơn</p>
+                <div className="rounded-xl border border-black/10 bg-white/70 p-4">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Sản phẩm trong đơn</p>
                   <div className="space-y-2">
                     {selectedOrder.details.map((detail) => (
-                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-3 text-sm">
-                        <p className="text-primary">{detail.product?.name || detail.productId}</p>
-                        <p className="text-text-muted">x{detail.quantity} • {currency(detail.price)}</p>
+                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-3 text-sm p-2 rounded-lg hover:bg-black/[0.02]">
+                        <div className="flex items-center gap-3">
+                          {detail.product?.images?.[0] ? (
+                            <img src={detail.product.images[0]} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-black/5 flex items-center justify-center"><Package size={16} className="text-black/20" /></div>
+                          )}
+                          <p className="text-primary font-medium">{detail.product?.name || detail.productId}</p>
+                        </div>
+                        <p className="text-text-muted whitespace-nowrap">x{detail.quantity} • {currency(detail.price)}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : null}
+
+              {/* Cancel button for PENDING */}
               {selectedOrder.status === 'PENDING' ? (
-                <div className="pt-2">
+                <div className="pt-1">
                   <button
                     type="button"
                     onClick={cancelOrder}
@@ -342,6 +539,73 @@ export function BuyerOrdersPage() {
                   >
                     {cancelling ? 'Đang hủy...' : 'Hủy đơn hàng'}
                   </button>
+                </div>
+              ) : null}
+
+              {/* ─── Inline Review Form (DELIVERED only) ─── */}
+              {selectedOrder.status === 'DELIVERED' ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Star size={18} className="text-amber-500" />
+                    <h3 className="font-serif text-lg text-primary">Đánh giá sản phẩm</h3>
+                  </div>
+                  {reviewableProducts.length === 0 ? (
+                    <div className="flex items-center gap-2 text-sm text-emerald-700">
+                      <CheckCircle2 size={16} />
+                      <span>Bạn đã đánh giá tất cả sản phẩm trong đơn hàng này!</span>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmitReview} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Sản phẩm *</label>
+                          <select
+                            value={reviewForm.productId}
+                            onChange={(e) => setReviewForm((prev) => ({ ...prev, productId: e.target.value }))}
+                            className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
+                            required
+                          >
+                            <option value="">— Chọn sản phẩm —</option>
+                            {reviewableProducts.map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Số sao *</label>
+                          <div className="flex items-center gap-1.5 h-11">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setReviewForm((prev) => ({ ...prev, rating: String(star) }))}
+                                className="transition-transform hover:scale-125 cursor-pointer"
+                              >
+                                <Star size={22} className={`transition-colors duration-200 ${parseInt(reviewForm.rating, 10) >= star ? 'text-amber-400 fill-amber-400' : 'text-black/15'}`} />
+                              </button>
+                            ))}
+                            <span className="ml-2 text-sm text-text-muted">({reviewForm.rating}/5)</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-1.5">Nhận xét</label>
+                        <textarea
+                          value={reviewForm.comment}
+                          onChange={(e) => setReviewForm((prev) => ({ ...prev, comment: e.target.value }))}
+                          placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..."
+                          className="w-full min-h-20 rounded-xl border border-black/10 px-4 py-3 bg-white/70"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={submittingReview}
+                        className="h-11 px-6 rounded-xl bg-emerald-600 text-white text-xs uppercase tracking-[0.12em] hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+                      >
+                        {submittingReview ? 'Đang gửi...' : 'Gửi đánh giá'}
+                      </button>
+                    </form>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -511,11 +775,11 @@ export function BuyerReviewsPage() {
                   onChange={(e) => setReviewForm((prev) => ({ ...prev, rating: e.target.value }))}
                   className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70"
                 >
-                  <option value="5">⭐⭐⭐⭐⭐ (5 sao)</option>
-                  <option value="4">⭐⭐⭐⭐ (4 sao)</option>
-                  <option value="3">⭐⭐⭐ (3 sao)</option>
-                  <option value="2">⭐⭐ (2 sao)</option>
-                  <option value="1">⭐ (1 sao)</option>
+                  <option value="5">5 sao</option>
+                  <option value="4">4 sao</option>
+                  <option value="3">3 sao</option>
+                  <option value="2">2 sao</option>
+                  <option value="1">1 sao</option>
                 </select>
               </div>
             </div>
@@ -556,7 +820,7 @@ export function BuyerReviewsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-primary">{review.product?.name || 'Sản phẩm'}</p>
-                      <p className="text-sm text-text-muted mt-1">{'⭐'.repeat(review.rating)} ({review.rating}/5)</p>
+                      <p className="text-sm text-text-muted mt-1 flex items-center gap-0.5">{Array.from({ length: 5 }, (_, i) => <Star key={i} size={14} className={i < review.rating ? 'text-amber-400 fill-amber-400' : 'text-black/15'} />)} <span className="ml-1">({review.rating}/5)</span></p>
                       <p className="text-sm mt-2">{review.comment || 'Không có nhận xét'}</p>
                       <p className="text-xs text-text-muted mt-2">{formatDate(review.createdAt)}</p>
                     </div>

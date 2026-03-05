@@ -61,4 +61,13 @@ async function createVnpayUrl(req, res, next) {
   }
 }
 
-module.exports = { create, myOrders, manageOrders, getById, updateStatus, createVnpayUrl };
+async function simulateNext(req, res, next) {
+  try {
+    const data = await orderService.simulateNextStatus(req.params.id, req.user.id);
+    return sendSuccess(res, 'Chuyển trạng thái thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, myOrders, manageOrders, getById, updateStatus, createVnpayUrl, simulateNext };

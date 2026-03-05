@@ -35,6 +35,21 @@ async function create(userId, productId, rating, comment) {
   const product = await prisma.product.findFirst({ where: { id: productId, isActive: true } });
   if (!product) throw Object.assign(new Error('Sản phẩm không tồn tại'), { statusCode: 404 });
 
+  // Kiểm tra buyer đã nhận hàng chứa sản phẩm này chưa
+  const deliveredOrder = await prisma.order.findFirst({
+    where: {
+      buyerId: userId,
+      status: 'DELIVERED',
+      details: { some: { productId } },
+    },
+  });
+  if (!deliveredOrder) {
+    throw Object.assign(
+      new Error('Bạn chỉ có thể đánh giá sản phẩm từ đơn hàng đã giao thành công'),
+      { statusCode: 403 },
+    );
+  }
+
   const existingReview = await prisma.review.findFirst({
     where: { userId, productId },
   });
