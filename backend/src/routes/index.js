@@ -10,6 +10,7 @@ const reviewRoutes = require('./review.routes');
 const adminRoutes = require('./admin.routes');
 const statsRoutes = require('./stats.routes');
 const categoryRoutes = require('./category.routes');
+const withdrawalRoutes = require('./withdrawal.routes');
 
 router.use('/auth', authRoutes);
 router.use('/categories', categoryRoutes);
@@ -20,5 +21,6 @@ router.use('/ai', aiRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/admin', adminRoutes);
 router.use('/stats', statsRoutes);
+router.use('/withdrawals', withdrawalRoutes);
 
 module.exports = router;

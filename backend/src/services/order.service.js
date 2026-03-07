@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const vnpayService = require('./vnpay.service');
 
@@ -19,47 +20,72 @@ async function create(buyerId, body) {
   }
 
   const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
-  let totalAmount = 0;
-  const details = [];
 
+  // Nhóm theo sellerId: { sellerId -> [{ productId, quantity, price, product }] }
+  const bySeller = new Map();
   for (const it of items) {
     const product = productMap[it.productId];
     if (!product) throw Object.assign(new Error(`Sản phẩm ${it.productId} không tồn tại`), { statusCode: 400 });
     const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
     if (product.stock < qty) throw Object.assign(new Error(`Sản phẩm ${product.name} không đủ tồn kho`), { statusCode: 400 });
     const price = Number(product.salePrice ?? product.price);
-    const lineTotal = price * qty;
-    totalAmount += lineTotal;
-    details.push({ productId: product.id, quantity: qty, price });
+    const sellerId = product.sellerId;
+    if (!bySeller.has(sellerId)) bySeller.set(sellerId, []);
+    bySeller.get(sellerId).push({ productId: product.id, quantity: qty, price, product });
   }
-
-  const order = await prisma.order.create({
-    data: {
-      buyerId,
-      totalAmount,
-      shippingAddress,
-      phone,
-      note: note || null,
-      status: 'PENDING',
-      details: {
-        create: details,
-      },
-    },
-    include: {
-      details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } },
-    },
-  });
 
   const decrements = {};
-  items.forEach((it) => {
+  for (const it of items) {
     const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
     decrements[it.productId] = (decrements[it.productId] || 0) + qty;
-  });
-  for (const [id, dec] of Object.entries(decrements)) {
-    await prisma.product.update({ where: { id }, data: { stock: { decrement: dec } } });
   }
 
-  return order;
+  const orderGroupId = bySeller.size > 1 ? crypto.randomUUID() : null;
+  let totalAmountSum = 0;
+
+  const createdOrders = await prisma.$transaction(async (tx) => {
+    const orders = [];
+    for (const [sellerId, sellerItems] of bySeller) {
+      let totalAmount = 0;
+      const details = sellerItems.map(({ productId, quantity, price }) => {
+        totalAmount += price * quantity;
+        return { productId, quantity, price };
+      });
+      totalAmountSum += totalAmount;
+      const order = await tx.order.create({
+        data: {
+          buyerId,
+          sellerId,
+          totalAmount,
+          shippingAddress,
+          phone,
+          note: note || null,
+          status: 'PENDING',
+          details: { create: details },
+        },
+        include: {
+          details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } },
+        },
+      });
+      orders.push(order);
+    }
+    if (orderGroupId && orders.length > 0) {
+      await tx.order.updateMany({
+        where: { id: { in: orders.map((o) => o.id) } },
+        data: { orderGroupId },
+      });
+    }
+    for (const [id, dec] of Object.entries(decrements)) {
+      await tx.product.update({ where: { id }, data: { stock: { decrement: dec } } });
+    }
+    return orders;
+  });
+
+  return {
+    orders: createdOrders,
+    orderGroupId,
+    totalAmount: totalAmountSum,
+  };
 }
 
 async function getMyOrders(userId) {
@@ -94,13 +120,10 @@ async function getManageOrders(userId, userRole, query = {}) {
   }
 
   if (userRole === 'SELLER') {
-    where.details = {
-      some: {
-        product: {
-          sellerId: userId,
-        },
-      },
-    };
+    where.OR = [
+      { sellerId: userId },
+      { sellerId: null, details: { some: { product: { sellerId: userId } } } },
+    ];
   }
 
   const [items, total] = await Promise.all([
@@ -149,13 +172,31 @@ async function updateStatus(orderId, status, userId, userRole) {
   if (!order) throw Object.assign(new Error('Đơn hàng không tồn tại'), { statusCode: 404 });
   const allowed = ['CONFIRMED', 'SHIPPING', 'DELIVERED', 'CANCELLED'];
   if (!allowed.includes(status)) throw Object.assign(new Error('Trạng thái không hợp lệ'), { statusCode: 400 });
+
   if (status === 'CANCELLED' && order.buyerId === userId) {
     return prisma.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
   }
+
+  if (status === 'DELIVERED') {
+    if (order.status !== 'SHIPPING') {
+      throw Object.assign(new Error('Chỉ đơn đang giao mới có thể chuyển sang Đã giao'), { statusCode: 400 });
+    }
+    if (order.buyerId === userId) {
+      return prisma.order.update({ where: { id: orderId }, data: { status: 'DELIVERED' } });
+    }
+    if (userRole === 'ADMIN') {
+      return prisma.order.update({ where: { id: orderId }, data: { status: 'DELIVERED' } });
+    }
+    throw Object.assign(new Error('Chỉ buyer mới được xác nhận đã nhận hàng, hoặc Admin để ghi đè'), { statusCode: 403 });
+  }
+
   if (userRole !== 'ADMIN' && userRole !== 'SELLER' && userRole !== 'STAFF') {
     throw Object.assign(new Error('Chỉ admin/seller/staff mới được cập nhật trạng thái'), { statusCode: 403 });
   }
-  return prisma.order.update({ where: { id: orderId }, data: { status } });
+
+  const data = { status };
+  if (status === 'SHIPPING') data.shippedAt = new Date();
+  return prisma.order.update({ where: { id: orderId }, data });
 }
 
 async function createVnpayPaymentUrl(orderId, userId, req) {
@@ -176,6 +217,25 @@ async function createVnpayPaymentUrl(orderId, userId, req) {
   return { paymentUrl };
 }
 
+async function createVnpayPaymentUrlForGroup(orderGroupId, userId, req) {
+  const orders = await prisma.order.findMany({
+    where: { orderGroupId, buyerId: userId, status: 'PENDING' },
+  });
+  if (!orders.length) throw Object.assign(new Error('Không tìm thấy đơn hàng hoặc đã thanh toán'), { statusCode: 404 });
+  const totalAmount = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+  if (totalAmount <= 0) throw Object.assign(new Error('Tổng tiền không hợp lệ'), { statusCode: 400 });
+
+  const forwarded = req.headers['x-forwarded-for'];
+  const clientIp = (typeof forwarded === 'string' ? forwarded.split(',')[0] : forwarded?.[0])?.trim() || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+  const orderInfo = `Thanh toan nhom don ${orderGroupId}`;
+  const paymentUrl = vnpayService.buildPaymentUrlForGroup(orderGroupId, totalAmount, orderInfo, clientIp);
+  await prisma.order.updateMany({
+    where: { orderGroupId, buyerId: userId },
+    data: { paymentMethod: 'VNPAY' },
+  });
+  return { paymentUrl };
+}
+
 async function simulateNextStatus(orderId, userId) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw Object.assign(new Error('Đơn hàng không tồn tại'), { statusCode: 404 });
@@ -185,11 +245,38 @@ async function simulateNextStatus(orderId, userId) {
   const nextStatus = flow[order.status];
   if (!nextStatus) throw Object.assign(new Error('Đơn hàng đã ở trạng thái cuối hoặc đã hủy'), { statusCode: 400 });
 
+  const data = { status: nextStatus };
+  if (nextStatus === 'SHIPPING') data.shippedAt = new Date();
   return prisma.order.update({
     where: { id: orderId },
-    data: { status: nextStatus },
+    data,
     include: { details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } } },
   });
 }
 
-module.exports = { create, getMyOrders, getManageOrders, getById, updateStatus, createVnpayPaymentUrl, simulateNextStatus };
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
+async function autoDeliverAfter5Hours() {
+  const cutoff = new Date(Date.now() - FIVE_HOURS_MS);
+  const updated = await prisma.order.updateMany({
+    where: {
+      status: 'SHIPPING',
+      shippedAt: { not: null, lte: cutoff },
+    },
+    data: { status: 'DELIVERED' },
+  });
+  return updated.count;
+}
+
+function startAutoDeliverJob(intervalMs = 10 * 60 * 1000) {
+  setInterval(async () => {
+    try {
+      const count = await autoDeliverAfter5Hours();
+      if (count > 0) console.log(`[Auto-deliver] Đã tự động chuyển ${count} đơn SHIPPING -> DELIVERED (sau 5h).`);
+    } catch (err) {
+      console.error('[Auto-deliver] Lỗi:', err.message);
+    }
+  }, intervalMs);
+}
+
+module.exports = { create, getMyOrders, getManageOrders, getById, updateStatus, createVnpayPaymentUrl, createVnpayPaymentUrlForGroup, simulateNextStatus, autoDeliverAfter5Hours, startAutoDeliverJob };

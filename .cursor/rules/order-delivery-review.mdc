@@ -1,0 +1,21 @@
+---
+description: Luồng giao hàng và đánh giá đơn: tự động DELIVERED sau 5h, đánh giá chỉ khi đã nhận hàng
+globs: backend/src/**/order*.js,backend/src/**/review*.js,frontend/src/**/RolePages*
+alwaysApply: false
+---
+
+# Order Delivery & Review
+
+## Giao hàng → Đã giao (DELIVERED)
+
+- **Buyer xác nhận:** Chỉ buyer được bấm "Xác nhận đã nhận hàng" khi đơn ở trạng thái SHIPPING. Gọi `PATCH /orders/:id/status` với `{ status: 'DELIVERED' }`.
+- **Tự động sau 5 giờ:** Nếu buyer không bấm xác nhận trong **5 giờ** kể từ khi đơn chuyển sang SHIPPING (dùng `shippedAt`), hệ thống tự động chuyển đơn sang DELIVERED (job chạy định kỳ, ví dụ mỗi 10 phút).
+
+## Đánh giá sản phẩm
+
+- **Chỉ khi đã giao:** Cho phép tạo đánh giá (review) **chỉ khi** người dùng có ít nhất một đơn hàng chứa sản phẩm đó và đơn đó có `status === 'DELIVERED'`. Backend đã enforce trong `review.service.js` (create review).
+
+## Tóm tắt
+
+1. SHIPPING → DELIVERED: do buyer bấm "Xác nhận đã nhận hàng" hoặc auto sau 5h.
+2. Đánh giá: chỉ hiển thị/cho phép khi đơn sản phẩm đó đã DELIVERED.

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Settings,
   Layers,
+  Wallet,
 } from 'lucide-react';
 
 export const ROLE_META = {
@@ -37,6 +38,7 @@ export const DASHBOARD_MENUS = {
     { to: '/seller', label: 'Tổng quan', icon: LayoutDashboard },
     { to: '/seller/products', label: 'Sản phẩm', icon: Package },
     { to: '/seller/orders', label: 'Đơn hàng', icon: ClipboardList },
+    { to: '/seller/wallet', label: 'Ví & Rút tiền', icon: Wallet },
     { to: '/seller/kyc', label: 'Xác minh KYC', icon: BadgeCheck },
     { to: '/settings', label: 'Cài đặt', icon: Settings },
   ],
@@ -57,6 +59,7 @@ export const DASHBOARD_MENUS = {
     { section: 'Quản lý' },
     { to: '/admin/users', label: 'Người dùng', icon: UserCog },
     { to: '/admin/kyc', label: 'Duyệt KYC', icon: ShieldCheck },
+    { to: '/admin/withdrawals', label: 'Rút tiền Seller', icon: Wallet },
     { section: 'Hệ thống' },
     { to: '/admin/reports', label: 'Báo cáo', icon: BarChart3 },
     { to: '/admin/system', label: 'Cấu hình', icon: Settings },

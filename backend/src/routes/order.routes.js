@@ -4,6 +4,7 @@ const orderController = require('../controllers/order.controller');
 const { authMiddleware } = require('../middlewares/auth.middleware');
 
 router.post('/', authMiddleware, orderController.create);
+router.post('/pay-group', authMiddleware, orderController.createVnpayUrlForGroup);
 router.post('/:id/vnpay-url', authMiddleware, orderController.createVnpayUrl);
 router.get('/', authMiddleware, orderController.myOrders);
 router.get('/manage', authMiddleware, orderController.manageOrders);

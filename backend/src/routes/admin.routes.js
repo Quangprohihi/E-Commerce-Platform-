@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
 const reportController = require('../controllers/report.controller');
+const withdrawalController = require('../controllers/withdrawal.controller');
 const { authMiddleware } = require('../middlewares/auth.middleware');
 const { requireRole } = require('../middlewares/role.middleware');
 
@@ -16,5 +17,8 @@ router.get('/reports/summary', reportController.getSummary);
 router.get('/reports/detail', reportController.getDetail);
 router.get('/reports/export/excel', reportController.exportExcel);
 router.get('/reports/export/pdf', reportController.exportPdf);
+
+router.get('/withdrawals', withdrawalController.listForAdmin);
+router.patch('/withdrawals/:id', withdrawalController.updateStatus);
 
 module.exports = router;

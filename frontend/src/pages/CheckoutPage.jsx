@@ -63,15 +63,23 @@ export default function CheckoutPage() {
         phone: form.phone.trim(),
         note: form.note?.trim() || undefined,
       });
-      const order = orderRes.data?.data;
-      if (!order?.id) {
+      const data = orderRes.data?.data;
+      const orders = Array.isArray(data?.orders) ? data.orders : data?.id ? [data] : [];
+      const orderGroupId = data?.orderGroupId || null;
+      if (!orders.length) {
         setError('Tạo đơn hàng thất bại.');
         return;
       }
 
       if (paymentMethod === PAYMENT_VNPAY) {
-        const urlRes = await api.post(`/orders/${order.id}/vnpay-url`);
-        const paymentUrl = urlRes.data?.data?.paymentUrl;
+        let paymentUrl;
+        if (orderGroupId && orders.length > 1) {
+          const urlRes = await api.post('/orders/pay-group', { orderGroupId });
+          paymentUrl = urlRes.data?.data?.paymentUrl;
+        } else {
+          const urlRes = await api.post(`/orders/${orders[0].id}/vnpay-url`);
+          paymentUrl = urlRes.data?.data?.paymentUrl;
+        }
         if (paymentUrl) {
           localStorage.removeItem('cart');
           window.dispatchEvent(new Event('cart-updated'));

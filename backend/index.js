@@ -11,7 +11,10 @@ app.use((req, res) => {
 });
 app.use(errorMiddleware);
 
+const orderService = require('./src/services/order.service');
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  orderService.startAutoDeliverJob();
 });

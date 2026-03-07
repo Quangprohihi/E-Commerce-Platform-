@@ -82,7 +82,7 @@ export default function ProductListPage() {
     { key: 'condition', label: 'Tình trạng', values: Object.keys(ATTR_TRANSLATIONS.condition) },
   ];
 
-  const FilterContent = () => (
+  const filterContent = (
     <div className="space-y-6">
       <form onSubmit={handleSearchSubmit} className="relative">
         <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -202,7 +202,7 @@ export default function ProductListPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8">
           <aside className="hidden lg:block glass rounded-2xl p-5 h-fit sticky top-24">
-            <FilterContent />
+            {filterContent}
           </aside>
 
           <div>
@@ -235,7 +235,7 @@ export default function ProductListPage() {
                 <X size={16} />
               </button>
             </div>
-            <FilterContent />
+            {filterContent}
           </div>
         </div>
       ) : null}

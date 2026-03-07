@@ -67,6 +67,39 @@ function buildPaymentUrl(orderId, amountVnd, orderInfo, clientIp) {
 }
 
 /**
+ * Build VNPAY payment URL for a group of orders (one payment for total).
+ * vnp_TxnRef = orderGroupId; return URL includes orderGroupId so callback can update all orders.
+ */
+function buildPaymentUrlForGroup(orderGroupId, amountVnd, orderInfo, clientIp) {
+  const port = process.env.PORT || 5000;
+  const baseReturnUrl =
+    process.env.VNPAY_RETURN_URL ||
+    (process.env.NODE_ENV !== 'production' ? `http://localhost:${port}/api/payment/vnpay/return` : null);
+  if (!baseReturnUrl) throw new Error('VNPAY_RETURN_URL is not configured.');
+  const returnUrl = `${baseReturnUrl}${baseReturnUrl.includes('?') ? '&' : '?'}orderGroupId=${encodeURIComponent(orderGroupId)}`;
+
+  const rawOrderInfo = orderInfo || `Thanh toan nhom don ${orderGroupId}`;
+  const safeOrderInfo = sanitizeOrderInfo(rawOrderInfo) || `Nhom don ${orderGroupId}`;
+  const amount = Math.round(Number(amountVnd) || 0);
+  if (amount <= 0) throw new Error('Invalid amount for VNPAY');
+
+  const nowGMT7 = getDateInGMT7();
+  const expireDate = new Date(nowGMT7.getTime() + 15 * 60 * 1000);
+
+  const paymentUrl = vnpay.buildPaymentUrl({
+    vnp_Amount: amount,
+    vnp_IpAddr: clientIp || '127.0.0.1',
+    vnp_TxnRef: String(orderGroupId),
+    vnp_OrderInfo: safeOrderInfo,
+    vnp_ReturnUrl: returnUrl,
+    vnp_Locale: 'vn',
+    vnp_ExpireDate: dateFormat(expireDate, 'yyyyMMddHHmmss'),
+  });
+
+  return paymentUrl;
+}
+
+/**
  * Verify query params from VNPAY return URL redirect.
  * @param {object} query - req.query from return URL
  * @returns {object} { isVerified, isSuccess, message, ... }
@@ -86,6 +119,7 @@ function verifyIpnCall(query) {
 
 module.exports = {
   buildPaymentUrl,
+  buildPaymentUrlForGroup,
   verifyReturnUrl,
   verifyIpnCall,
 };

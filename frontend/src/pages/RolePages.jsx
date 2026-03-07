@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   CreditCard,
   ChevronRight,
+  Wallet,
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -378,6 +379,24 @@ export function BuyerOrdersPage() {
     }
   };
 
+  const confirmReceived = async () => {
+    if (!selectedOrder?.id || selectedOrder?.status !== 'SHIPPING') return;
+    setSimulating(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'DELIVERED' });
+      setSuccessMsg('Đã xác nhận nhận hàng. Bạn có thể đánh giá sản phẩm bên dưới.');
+      const refreshed = await api.get(`/orders/${selectedOrder.id}`);
+      setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'DELIVERED' });
+      await loadOrders();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể xác nhận.');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!reviewForm.productId) { setError('Vui lòng chọn sản phẩm.'); return; }
@@ -416,7 +435,8 @@ export function BuyerOrdersPage() {
       .map((d) => ({ id: d.product?.id || d.productId, name: d.product?.name || d.productId }));
   }, [selectedOrder, reviewedProductIds]);
 
-  const nextStatusLabel = selectedOrder ? { PENDING: 'Xác nhận đơn', CONFIRMED: 'Bắt đầu giao', SHIPPING: 'Đã nhận hàng' }[selectedOrder.status] : null;
+  const canConfirmReceived = selectedOrder?.status === 'SHIPPING';
+  const nextStatusLabel = selectedOrder && !canConfirmReceived ? { PENDING: 'Xác nhận đơn', CONFIRMED: 'Bắt đầu giao' }[selectedOrder.status] : null;
 
   return (
     <PageShell title="Đơn hàng của Buyer" subtitle="Theo dõi trạng thái và tổng giá trị đơn hàng của bạn.">
@@ -471,7 +491,25 @@ export function BuyerOrdersPage() {
               {error ? <MessageBox type="error" text={error} /> : null}
               {successMsg ? <MessageBox type="success" text={successMsg} /> : null}
 
-              {/* Simulate Button */}
+              {/* Xác nhận đã nhận hàng (chỉ khi đơn đang giao) */}
+              {canConfirmReceived ? (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-primary/5 border border-emerald-200">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-primary">Đơn đang giao</p>
+                    <p className="text-xs text-text-muted mt-1">Khi bạn đã nhận được hàng, bấm xác nhận bên dưới. Sau 5 giờ không xác nhận, đơn sẽ tự động chuyển sang Đã giao.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={confirmReceived}
+                    disabled={simulating}
+                    className="h-10 px-5 rounded-xl bg-emerald-600 text-white text-xs uppercase tracking-[0.12em] hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center gap-2 shrink-0"
+                  >
+                    {simulating ? 'Đang xử lý...' : 'Xác nhận đã nhận hàng'}
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Simulate (chỉ PENDING/CONFIRMED - dùng cho testing) */}
               {nextStatusLabel ? (
                 <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/10">
                   <div className="flex-1">
@@ -528,9 +566,24 @@ export function BuyerOrdersPage() {
                 </div>
               ) : null}
 
-              {/* Cancel button for PENDING */}
+              {/* PENDING: Pay VNPay or Cancel */}
               {selectedOrder.status === 'PENDING' ? (
-                <div className="pt-1">
+                <div className="pt-1 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await api.post(`/orders/${selectedOrder.id}/vnpay-url`);
+                        const url = res.data?.data?.paymentUrl;
+                        if (url) window.location.href = url;
+                      } catch (err) {
+                        setError(err.response?.data?.message || 'Không thể tạo link thanh toán.');
+                      }
+                    }}
+                    className="h-10 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] hover:bg-primary/90"
+                  >
+                    Thanh toán qua VNPAY
+                  </button>
                   <button
                     type="button"
                     onClick={cancelOrder}
@@ -1690,6 +1743,114 @@ export function SellerKycPage() {
   );
 }
 
+export function SellerWalletPage() {
+  const [data, setData] = useState({ balance: 0, income: 0, withdrawn: 0, requests: [], total: 0, page: 1, totalPages: 1 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get('/withdrawals', { params: { page: 1, limit: 20 } });
+      setData(res.data?.data || { balance: 0, income: 0, withdrawn: 0, requests: [], total: 0, page: 1, totalPages: 1 });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không tải được dữ liệu ví.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleWithdraw = async (e) => {
+    e.preventDefault();
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num <= 0) {
+      setError('Nhập số tiền hợp lệ.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.post('/withdrawals', { amount: num, note: note.trim() || undefined });
+      setSuccessMsg('Gửi yêu cầu rút tiền thành công. Admin sẽ xử lý và chuyển khoản cho bạn.');
+      setAmount('');
+      setNote('');
+      load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể gửi yêu cầu rút tiền.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const statusLabel = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối' };
+  const statusColors = { PENDING: 'bg-amber-50 text-amber-700', APPROVED: 'bg-emerald-50 text-emerald-700', REJECTED: 'bg-red-50 text-red-600' };
+
+  return (
+    <PageShell title="Ví & Rút tiền" subtitle="Số dư từ đơn đã giao và đã thanh toán. Gửi yêu cầu rút tiền để admin chuyển khoản.">
+      {error ? <MessageBox type="error" text={error} /> : null}
+      {successMsg ? <MessageBox type="success" text={successMsg} /> : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <StatCard label="Số dư khả dụng" value={currency(data.balance)} icon={Wallet} accentColor="#10B981" />
+        <StatCard label="Tổng thu (đã giao)" value={currency(data.income)} icon={TrendingUp} accentColor="#3B82F6" />
+        <StatCard label="Đã rút" value={currency(data.withdrawn)} icon={CreditCard} accentColor="#7f786f" />
+      </div>
+
+      <SectionCard title="Yêu cầu rút tiền">
+        <form onSubmit={handleWithdraw} className="flex flex-wrap items-end gap-4 mb-4">
+          <div>
+            <label className="block text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Số tiền (đ)</label>
+            <input type="number" min="1" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="VD: 500000" className="w-40 h-11 rounded-xl border border-black/10 px-3 bg-white/70" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Ghi chú (tùy chọn)</label>
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Số tài khoản, ngân hàng..." className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70" />
+          </div>
+          <button type="submit" disabled={submitting || loading} className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60">
+            {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+          </button>
+        </form>
+        <p className="text-xs text-text-muted">Tiền chỉ được cộng vào số dư khi đơn hàng đã giao (DELIVERED) và buyer đã thanh toán. Admin sẽ xử lý và chuyển khoản theo thông tin bạn cung cấp.</p>
+      </SectionCard>
+
+      <SectionCard title="Lịch sử yêu cầu rút tiền" action={<button type="button" onClick={load} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Làm mới</button>}>
+        {loading ? <EmptyState text="Đang tải..." /> : null}
+        {!loading && (!data.requests || data.requests.length === 0) ? <EmptyState text="Chưa có yêu cầu nào." /> : null}
+        {!loading && data.requests?.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b border-black/10 text-text-muted uppercase tracking-[0.08em] text-xs">
+                  <th className="py-2 pr-3">Ngày</th>
+                  <th className="py-2 pr-3">Số tiền</th>
+                  <th className="py-2 pr-3">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.requests.map((req) => (
+                  <tr key={req.id} className="border-b border-black/5">
+                    <td className="py-3 pr-3">{formatDate(req.createdAt)}</td>
+                    <td className="py-3 pr-3 font-medium">{currency(req.amount)}</td>
+                    <td className="py-3 pr-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[req.status] || ''}`}>{statusLabel[req.status] || req.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </SectionCard>
+    </PageShell>
+  );
+}
+
 export function StaffDashboardPage() {
   const [products, setProducts] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -2576,6 +2737,112 @@ export function AdminKycPage() {
               );
             })}
           />
+        ) : null}
+      </SectionCard>
+    </PageShell>
+  );
+}
+
+export function AdminWithdrawalsPage() {
+  const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 1 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [processingId, setProcessingId] = useState(null);
+  const [adminNote, setAdminNote] = useState('');
+
+  const load = async (page = 1) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get('/admin/withdrawals', { params: { page, limit: 20, status: statusFilter || undefined } });
+      const payload = res.data?.data || {};
+      setData({
+        items: payload.items || [],
+        total: payload.total || 0,
+        page: payload.page || 1,
+        totalPages: payload.totalPages || 1,
+      });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không tải được danh sách.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(1); }, [statusFilter]);
+
+  const handleStatus = async (id, status) => {
+    if (!window.confirm(status === 'APPROVED' ? 'Xác nhận duyệt yêu cầu rút tiền? (Bạn cần chuyển khoản cho seller bên ngoài hệ thống.)' : 'Từ chối yêu cầu này?')) return;
+    setProcessingId(id);
+    try {
+      await api.patch(`/admin/withdrawals/${id}`, { status, adminNote: adminNote.trim() || undefined });
+      setAdminNote('');
+      load(data.page);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không cập nhật được.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const statusLabel = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối' };
+  const statusColors = { PENDING: 'bg-amber-50 text-amber-700', APPROVED: 'bg-emerald-50 text-emerald-700', REJECTED: 'bg-red-50 text-red-600' };
+
+  return (
+    <PageShell title="Duyệt rút tiền Seller" subtitle="Xem và duyệt/từ chối yêu cầu rút tiền. Sau khi duyệt, chuyển khoản cho seller theo thông tin họ cung cấp.">
+      {error ? <MessageBox type="error" text={error} /> : null}
+      <SectionCard
+        title="Yêu cầu rút tiền"
+        action={
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] bg-white/70">
+            <option value="">Tất cả</option>
+            <option value="PENDING">Chờ duyệt</option>
+            <option value="APPROVED">Đã duyệt</option>
+            <option value="REJECTED">Từ chối</option>
+          </select>
+        }
+      >
+        {loading ? <EmptyState text="Đang tải..." /> : null}
+        {!loading && (!data.items || data.items.length === 0) ? <EmptyState text="Chưa có yêu cầu nào." /> : null}
+        {!loading && data.items?.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 mb-2">
+              <label className="text-xs text-text-muted">Ghi chú admin (dùng khi duyệt/từ chối):</label>
+              <input type="text" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="VD: Đã chuyển khoản MB 1234567890" className="flex-1 min-w-48 h-9 rounded-xl border border-black/10 px-3 bg-white/70 text-sm" />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-black/10 text-text-muted uppercase tracking-[0.08em] text-xs">
+                    <th className="py-2 pr-3">Seller</th>
+                    <th className="py-2 pr-3">Số tiền</th>
+                    <th className="py-2 pr-3">Ngày yêu cầu</th>
+                    <th className="py-2 pr-3">Trạng thái</th>
+                    <th className="py-2 pr-3">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((req) => (
+                    <tr key={req.id} className="border-b border-black/5">
+                      <td className="py-3 pr-3">{req.seller?.fullName || req.seller?.email || '--'}</td>
+                      <td className="py-3 pr-3 font-medium">{currency(req.amount)}</td>
+                      <td className="py-3 pr-3">{formatDate(req.createdAt)}</td>
+                      <td className="py-3 pr-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[req.status] || ''}`}>{statusLabel[req.status] || req.status}</span></td>
+                      <td className="py-3 pr-3">
+                        {req.status === 'PENDING' ? (
+                          <span className="flex items-center gap-2">
+                            <button type="button" onClick={() => handleStatus(req.id, 'APPROVED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs disabled:opacity-60">Duyệt</button>
+                            <button type="button" onClick={() => handleStatus(req.id, 'REJECTED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-red-600 text-white text-xs disabled:opacity-60">Từ chối</button>
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : null}
       </SectionCard>
     </PageShell>
