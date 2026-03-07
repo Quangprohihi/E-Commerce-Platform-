@@ -1,5 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title as ChartTitle,
+  Tooltip as ChartTooltip,
+  Legend as ChartLegend,
+  Filler,
+} from 'chart.js';
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, ChartTitle, ChartTooltip, ChartLegend, Filler,
+);
 import {
   ShoppingBag,
   Star,
@@ -26,6 +45,9 @@ import {
   CreditCard,
   ChevronRight,
   Wallet,
+  Eye,
+  Calendar,
+  ChevronDown,
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -45,16 +67,20 @@ function currency(value) {
   return `${new Intl.NumberFormat('vi-VN').format(amount)} đ`;
 }
 
-function PageShell({ title, subtitle, children }) {
+function PageShell({ title, subtitle, children, hideHeader }) {
   const { user } = useAuth();
 
   return (
     <DashboardLayout title={title} subtitle={subtitle}>
       <div>
-        <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Xin chào {user?.fullName || 'bạn'}</p>
-        <h1 className="font-serif text-3xl md:text-5xl text-primary mt-2">{title}</h1>
-        <p className="text-text-muted mt-3">{subtitle}</p>
-        <div className="mt-6">{children}</div>
+        {!hideHeader ? (
+          <>
+            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">Xin chào {user?.fullName || 'bạn'}</p>
+            <h1 className="font-serif text-3xl md:text-5xl text-primary mt-2">{title}</h1>
+            <p className="text-text-muted mt-3">{subtitle}</p>
+          </>
+        ) : null}
+        <div className={hideHeader ? '' : 'mt-6'}>{children}</div>
       </div>
     </DashboardLayout>
   );
@@ -89,11 +115,11 @@ function MessageBox({ type = 'info', text }) {
   return <p className={`text-sm border rounded-xl px-3 py-2 ${style}`}>{text}</p>;
 }
 
-function SectionCard({ title, children, action }) {
+function SectionCard({ title, children, action, compact }) {
   return (
-    <div className="glass-strong rounded-3xl p-6">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h2 className="font-serif text-2xl text-primary">{title}</h2>
+    <div className={`glass-strong rounded-3xl ${compact ? 'p-4' : 'p-6'}`}>
+      <div className={`flex items-center justify-between gap-3 ${compact ? 'mb-3' : 'mb-4'}`}>
+        <h2 className={`font-serif ${compact ? 'text-xl' : 'text-2xl'} text-primary`}>{title}</h2>
         {action}
       </div>
       {children}
@@ -2140,94 +2166,518 @@ export function StaffOrdersPage() {
   );
 }
 
+// ─── Chart colour constants ───────────────────────────────────────────────────
+const CHART_COLORS = {
+  gmv: '#1A1A1A',
+  revenue: '#4ADE80',
+  gmvFill: 'rgba(26,26,26,0.05)',
+  revenueFill: 'rgba(74,222,128,0.12)',
+  orderSlices: ['#FDBA74', '#60A5FA', '#A78BFA', '#4ADE80', '#F87171'],
+  barMain: '#1A1A1A',
+  barHover: '#4ADE80',
+  grid: 'rgba(0,0,0,0.04)',
+  tick: '#9CA3AF',
+};
+
+const LINE_OPTIONS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { position: 'top', labels: { font: { size: 11 }, color: '#6B7280', padding: 16, boxWidth: 10, usePointStyle: true } },
+    tooltip: {
+      callbacks: {
+        title: (items) => `Ngày ${items[0]?.label}`,
+        label: (ctx) => ` ${ctx.dataset.label}: ${new Intl.NumberFormat('vi-VN').format(ctx.raw)} đ`,
+      },
+    },
+  },
+  scales: {
+    x: { grid: { color: CHART_COLORS.grid }, ticks: { font: { size: 11 }, color: CHART_COLORS.tick } },
+    y: {
+      grid: { color: CHART_COLORS.grid },
+      ticks: { font: { size: 11 }, color: CHART_COLORS.tick, callback: (v) => `${(v / 1_000_000).toFixed(1)}M` },
+    },
+  },
+};
+
+const SPARKLINE_OPTIONS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        title: (items) => `Ngày ${items[0]?.label}`,
+        label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw} người`,
+      },
+    },
+  },
+  scales: {
+    x: { display: false },
+    y: { display: false, beginAtZero: true },
+  },
+  elements: { point: { radius: 2, hoverRadius: 4 } },
+};
+
+const DOUGHNUT_OPTIONS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { position: 'bottom', labels: { font: { size: 11 }, color: '#374151', padding: 14, boxWidth: 10, usePointStyle: true } },
+    tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw} đơn (${ctx.parsed === 0 ? 0 : Math.round((ctx.parsed / (ctx.dataset.data.reduce((a,b)=>a+b,0)||1))*100)}%)` } },
+  },
+};
+
+const BAR_OPTIONS = {
+  indexAxis: 'y',
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('vi-VN').format(ctx.raw)} đ` } },
+  },
+  scales: {
+    x: {
+      grid: { color: CHART_COLORS.grid },
+      ticks: { font: { size: 11 }, color: CHART_COLORS.tick, callback: (v) => `${(v / 1_000_000).toFixed(0)}M` },
+    },
+    y: { grid: { display: false }, ticks: { font: { size: 12 }, color: '#374151' } },
+  },
+};
+
+const TOP_PRODUCTS_BAR_OPTIONS = {
+  indexAxis: 'y',
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: { callbacks: { label: (ctx) => ` Đã bán: ${ctx.raw} sản phẩm` } },
+  },
+  scales: {
+    x: {
+      grid: { color: CHART_COLORS.grid },
+      ticks: { font: { size: 11 }, color: CHART_COLORS.tick, stepSize: 1 },
+    },
+    y: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#374151' } },
+  },
+};
+
+const DATE_PRESETS = [
+  { key: 'today',     label: 'Hôm nay' },
+  { key: 'yesterday', label: 'Hôm qua' },
+  { key: '7d',        label: '7 ngày' },
+  { key: 'thisMonth', label: 'Tháng này' },
+  { key: 'lastMonth', label: 'Tháng trước' },
+  { key: 'custom',    label: 'Tùy chỉnh' },
+];
+
+function getPresetDates(preset) {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  switch (preset) {
+    case 'today': return { from: todayStr, to: todayStr };
+    case 'yesterday': {
+      const y = new Date(now); y.setDate(y.getDate() - 1);
+      const d = y.toISOString().slice(0, 10);
+      return { from: d, to: d };
+    }
+    case 'thisMonth': {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: s.toISOString().slice(0, 10), to: todayStr };
+    }
+    case 'lastMonth': {
+      const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const e = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: s.toISOString().slice(0, 10), to: e.toISOString().slice(0, 10) };
+    }
+    default: { // '7d'
+      const d = new Date(now); d.setDate(d.getDate() - 6);
+      return { from: d.toISOString().slice(0, 10), to: todayStr };
+    }
+  }
+}
+
 export function AdminDashboardPage() {
-  const [users, setUsers] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [reviews, setReviews] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [preset, setPreset] = useState('7d');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [activeDates, setActiveDates] = useState(() => getPresetDates('7d'));
+  const [lowStockExpanded, setLowStockExpanded] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [u, p, r, o] = await Promise.all([
-          api.get('/admin/users', { params: { limit: 100 } }),
-          api.get('/products', { params: { limit: 100 } }),
-          api.get('/reviews', { params: { limit: 100 } }),
-          api.get('/orders/manage', { params: { limit: 50, page: 1 } }),
-        ]);
-        setUsers(u.data?.data?.items || []);
-        setProducts(p.data?.data?.items || []);
-        setReviews(r.data?.data?.items || []);
-        setOrders(o.data?.data?.items || []);
-      } catch {
-        setUsers([]);
-        setProducts([]);
-        setReviews([]);
-        setOrders([]);
-      }
+    let cancelled = false;
+    setLoading(true);
+    api.get('/admin/dashboard', { params: { from: activeDates.from, to: activeDates.to } })
+      .then((res) => { if (!cancelled) setStats(res.data?.data || null); })
+      .catch(() => { if (!cancelled) setStats(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeDates]);
+
+  const handlePresetClick = (key) => {
+    setPreset(key);
+    if (key !== 'custom') setActiveDates(getPresetDates(key));
+  };
+
+  const handleApplyCustom = () => {
+    if (customFrom && customTo) setActiveDates({ from: customFrom, to: customTo });
+  };
+
+  const s = stats;
+  const pendingWithdrawals = s?.pendingWithdrawals ?? 0;
+
+  const lineData = useMemo(() => {
+    const trend = s?.revenueTrend ?? [];
+    return {
+      labels: trend.map((d) => new Date(d.date).toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric' })),
+      datasets: [
+        {
+          label: 'GMV',
+          data: trend.map((d) => d.gmv),
+          borderColor: CHART_COLORS.gmv,
+          backgroundColor: CHART_COLORS.gmvFill,
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: 'Doanh thu',
+          data: trend.map((d) => d.revenue),
+          borderColor: CHART_COLORS.revenue,
+          backgroundColor: CHART_COLORS.revenueFill,
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+      ],
     };
-    load();
-  }, []);
+  }, [s]);
 
-  const pendingKyc = useMemo(() => users.filter((item) => item.sellerProfile?.kycStatus === 'PENDING').length, [users]);
-  const activeUsers = useMemo(() => users.filter((item) => ['BUYER', 'SELLER'].includes(item.role)).length, [users]);
-  const totalRevenue = useMemo(() => orders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0), [orders]);
-  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6), [orders]);
-  const topCategories = useMemo(() => {
-    const bucket = new Map();
+  const doughnutData = useMemo(() => ({
+    labels: ['Chờ xác nhận', 'Đã xác nhận', 'Đang giao', 'Đã giao', 'Đã hủy'],
+    datasets: [{
+      data: [
+        s?.orderCounts?.pending ?? 0,
+        s?.orderCounts?.confirmed ?? 0,
+        s?.orderCounts?.shipping ?? 0,
+        s?.orderCounts?.delivered ?? 0,
+        s?.orderCounts?.cancelled ?? 0,
+      ],
+      backgroundColor: CHART_COLORS.orderSlices,
+      borderWidth: 0,
+      hoverOffset: 8,
+    }],
+  }), [s]);
 
-    products.forEach((product) => {
-      const key = product.category?.name || 'Khác';
-      bucket.set(key, (bucket.get(key) || 0) + 1);
-    });
+  const barData = useMemo(() => ({
+    labels: s?.topSellers?.map((t) => t.sellerName) ?? [],
+    datasets: [{
+      label: 'Doanh thu',
+      data: s?.topSellers?.map((t) => t.revenue) ?? [],
+      backgroundColor: CHART_COLORS.barMain,
+      hoverBackgroundColor: CHART_COLORS.barHover,
+      borderRadius: 4,
+      borderWidth: 0,
+    }],
+  }), [s]);
 
-    return Array.from(bucket.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 4);
-  }, [products]);
+  const userGrowthData = useMemo(() => {
+    const trend = s?.userGrowthTrend ?? [];
+    const labels = trend.map((d) => new Date(d.date).toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric' }));
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Người dùng mới',
+          data: trend.map((d) => d.newUsers),
+          borderColor: '#A78BFA',
+          backgroundColor: 'rgba(167,139,250,0.15)',
+          borderWidth: 1.5,
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          label: 'Seller mới',
+          data: trend.map((d) => d.newSellers),
+          borderColor: '#4ADE80',
+          backgroundColor: 'rgba(74,222,128,0.15)',
+          borderWidth: 1.5,
+          tension: 0.4,
+          fill: true,
+        },
+      ],
+    };
+  }, [s]);
+
+  const topProductsData = useMemo(() => ({
+    labels: s?.topProducts?.map((p) => p.productName.length > 22 ? p.productName.slice(0, 22) + '…' : p.productName) ?? [],
+    datasets: [{
+      label: 'Số lượng bán',
+      data: s?.topProducts?.map((p) => p.quantitySold) ?? [],
+      backgroundColor: '#60A5FA',
+      hoverBackgroundColor: '#3B82F6',
+      borderRadius: 4,
+      borderWidth: 0,
+    }],
+  }), [s]);
+
+  const orderStatusLabels = [
+    { label: 'Chờ xác nhận', key: 'pending', color: '#FDBA74' },
+    { label: 'Đã xác nhận', key: 'confirmed', color: '#60A5FA' },
+    { label: 'Đang giao', key: 'shipping', color: '#A78BFA' },
+    { label: 'Đã giao', key: 'delivered', color: '#4ADE80' },
+    { label: 'Đã hủy', key: 'cancelled', color: '#F87171' },
+  ];
+
+  const conversionRate = (s?.orderCounts?.total ?? 0) > 0
+    ? `${((s.orderCounts.delivered / s.orderCounts.total) * 100).toFixed(1)}%`
+    : '—';
+  const chartPeriodLabel = preset === 'today' ? 'Hôm nay'
+    : preset === 'yesterday' ? 'Hôm qua'
+    : preset === '7d' ? '7 ngày gần nhất'
+    : preset === 'thisMonth' ? 'Tháng này'
+    : preset === 'lastMonth' ? 'Tháng trước'
+    : `${activeDates.from} – ${activeDates.to}`;
+
+  const kpiCards = [
+    { label: 'Doanh thu', value: currency(s?.totalRevenue ?? 0), Icon: TrendingUp, color: '#4ADE80' },
+    { label: 'GMV tổng', value: currency(s?.totalGmv ?? 0), Icon: ChartColumn, color: '#1A1A1A' },
+    { label: 'Tổng đơn', value: String(s?.orderCounts?.total ?? 0), Icon: ShoppingBag, color: '#60A5FA' },
+    { label: 'Đơn chờ', value: String(s?.orderCounts?.pending ?? 0), Icon: Clock3, color: '#FDBA74' },
+    { label: 'Người dùng', value: String(s?.userCounts?.total ?? 0), Icon: Users, color: '#A78BFA' },
+    { label: 'Sellers', value: String(s?.userCounts?.sellers ?? 0), Icon: BadgeCheck, color: '#A78BFA' },
+    { label: 'Rút tiền chờ', value: String(pendingWithdrawals), Icon: Wallet, color: pendingWithdrawals > 0 ? '#EF4444' : '#6B7280' },
+    { label: 'Tỉ lệ h.thành', value: conversionRate, Icon: CircleCheckBig, color: '#4ADE80' },
+  ];
 
   return (
-    <PageShell title="Admin Dashboard" subtitle="Bảng tổng quan số liệu chính của hệ thống.">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Active Users" value={activeUsers} icon={Users} accentColor="#F59E0B" />
-        <StatCard label="Tổng đơn" value={orders.length} icon={ShoppingBag} accentColor="#F59E0B" />
-        <StatCard label="Doanh thu" value={currency(totalRevenue)} icon={ChartColumn} accentColor="#F59E0B" />
-        <StatCard label="KYC Pending" value={pendingKyc} icon={ShieldCheck} accentColor="#F59E0B" />
+    <PageShell title="Admin Dashboard" subtitle="Bảng tổng quan số liệu chính của hệ thống." hideHeader>
+
+      {/* ── 8 KPI cards — single compact row ────────────────────────── */}
+      {/* ── Date Range Picker ─────────────────────────────────── */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <Calendar size={13} className="text-text-muted shrink-0" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => handlePresetClick(p.key)}
+              className={`px-3 py-1 rounded-full text-xs transition-colors ${
+                preset === p.key
+                  ? 'bg-primary text-white'
+                  : 'glass text-text-muted hover:text-primary border border-black/10'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {preset === 'custom' && (
+          <div className="flex items-center gap-1.5 flex-wrap ml-1">
+            <input
+              type="date" value={customFrom} max={customTo || undefined}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="text-xs border border-black/15 rounded-lg px-2 py-1 bg-white/80 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <span className="text-text-muted text-xs">→</span>
+            <input
+              type="date" value={customTo} min={customFrom || undefined}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="text-xs border border-black/15 rounded-lg px-2 py-1 bg-white/80 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <button
+              onClick={handleApplyCustom} disabled={!customFrom || !customTo}
+              className="px-3 py-1 rounded-full text-xs bg-primary text-white disabled:opacity-40 transition-opacity"
+            >
+              Áp dụng
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <SectionCard title="Cảnh báo hệ thống">
-          <div className="space-y-2 text-sm text-text-muted">
-            <p className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> {pendingKyc} hồ sơ KYC cần duyệt</p>
-            <p className="flex items-center gap-2"><Bell size={16} className="text-blue-600" /> {reviews.length} phản hồi cần theo dõi chất lượng</p>
-            <p className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-600" /> Theo dõi báo cáo để tối ưu chuyển đổi</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+        {kpiCards.map(({ label, value, Icon, color }) => (
+          <div key={label} className="glass rounded-2xl p-3 relative overflow-hidden min-w-0">
+            <div className="absolute top-2.5 right-2.5 rounded-xl p-1.5" style={{ background: `${color}1a` }}>
+              <Icon size={14} style={{ color }} strokeWidth={1.6} />
+            </div>
+            <p className="text-[10px] uppercase tracking-[0.13em] text-text-muted leading-snug pr-5 truncate">{label}</p>
+            <p className="font-serif text-xl mt-1 text-primary truncate">{loading ? '…' : value}</p>
           </div>
-        </SectionCard>
+        ))}
+      </div>
 
-        <SectionCard title="Hoạt động mới nhất">
-          <div className="space-y-2">
-            {recentOrders.length === 0 ? <EmptyState text="Chưa có hoạt động đơn hàng." /> : recentOrders.map((order) => (
-              <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 text-sm flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-primary">#{order.id.slice(0, 8)}</p>
-                  <p className="text-xs text-text-muted">{currency(order.totalAmount || 0)}</p>
+      {/* ── Withdrawal Alert ────────────────────────────────────────── */}
+      {pendingWithdrawals > 0 ? (
+        <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+            <p className="text-sm font-medium text-amber-800">Có {pendingWithdrawals} yêu cầu rút tiền đang chờ duyệt</p>
+          </div>
+          <Link to="/admin/withdrawals" className="shrink-0 h-8 px-3 rounded-full bg-amber-600 text-white text-xs uppercase tracking-[0.12em] inline-flex items-center hover:bg-amber-700 transition-colors">
+            Xử lý ngay
+          </Link>
+        </div>
+      ) : null}
+
+      {/* ── Main Charts: Line + Doughnut ────────────────────────────── */}
+      {/* Low Stock Alert */}
+      {!loading && (s?.lowStockProducts?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50 overflow-hidden">
+          <button
+            className="w-full px-4 py-2.5 flex items-center justify-between gap-4 hover:bg-orange-100/50 transition-colors"
+            onClick={() => setLowStockExpanded((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-orange-600 shrink-0" />
+              <p className="text-sm font-medium text-orange-800">
+                {s.lowStockProducts.length} sản phẩm sắp hết hàng (tồn kho ≤ 5)
+              </p>
+            </div>
+            <ChevronDown size={14} className={`text-orange-500 shrink-0 transition-transform ${lowStockExpanded ? 'rotate-180' : ''}`} />
+          </button>
+          {lowStockExpanded && (
+            <div className="border-t border-orange-200 px-4 py-2 space-y-1.5">
+              {s.lowStockProducts.map((p) => (
+                <div key={p.id} className="flex items-center gap-2 text-xs">
+                  <span className="font-medium text-primary truncate flex-1">{p.name}</span>
+                  <span className="text-text-muted truncate max-w-[140px] shrink-0">{p.sellerName}</span>
+                  <span className={`font-bold shrink-0 ${p.stock === 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                    {p.stock === 0 ? 'Hết hàng' : `Còn ${p.stock}`}
+                  </span>
                 </div>
-                <span className="text-xs uppercase tracking-[0.08em] text-text-muted">{order.status || '--'}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
+        {/* Line Chart – 2/3 width */}
+        <div className="xl:col-span-2">
+          <SectionCard title={`Doanh thu & GMV — ${chartPeriodLabel}`} compact>
+            <div style={{ height: 195 }}>
+              {loading
+                ? <EmptyState text="Đang tải..." />
+                : <Line data={lineData} options={LINE_OPTIONS} />}
+            </div>
+          </SectionCard>
+        </div>
+
+        {/* Doughnut Chart – 1/3 width */}
+        <div>
+          <SectionCard title="Phân loại đơn hàng" compact>
+            <div style={{ height: 145 }}>
+              {loading ? <EmptyState text="Đang tải..." /> : (
+                s?.orderCounts?.total
+                  ? <Doughnut data={doughnutData} options={DOUGHNUT_OPTIONS} />
+                  : <EmptyState text="Chưa có đơn hàng." />
+              )}
+            </div>
+            {!loading && s?.orderCounts?.total ? (
+              <div className="mt-2 grid grid-cols-2 gap-1 text-xs">
+                {orderStatusLabels.map(({ label, key, color }) => (
+                  <div key={key} className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                    <span className="text-text-muted truncate">{label}</span>
+                    <span className="font-medium ml-auto shrink-0">{s.orderCounts[key] ?? 0}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : null}
+          </SectionCard>
+        </div>
+      </div>
+
+      {/* User Growth Sparkline — full width */}
+      <div className="mt-3">
+        <SectionCard title={`Tăng trưởng Người dùng & Sellers — ${chartPeriodLabel}`} compact>
+          <div style={{ height: 65 }}>
+            {loading
+              ? <EmptyState text="Đang tải..." />
+              : <Line data={userGrowthData} options={SPARKLINE_OPTIONS} />}
+          </div>
+          {!loading ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-4 text-xs text-text-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: '#A78BFA' }} />
+                Người dùng mới
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: '#4ADE80' }} />
+                Seller mới
+              </span>
+              <span className="ml-auto">
+                Tổng: <strong className="text-primary">{s?.userCounts?.total ?? 0}</strong>
+                &nbsp;|&nbsp;Sellers: <strong className="text-primary">{s?.userCounts?.sellers ?? 0}</strong>
+              </span>
+            </div>
+          ) : null}
+        </SectionCard>
+      </div>
+
+      {/* ── Below-fold: Top Sellers + Top Products + Recent Orders ─── */}
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* Horizontal Bar Chart – Top Sellers */}
+        <SectionCard title="Top Sellers — Doanh thu">
+          <div style={{ height: Math.max(160, (s?.topSellers?.length ?? 3) * 48) }}>
+            {loading ? <EmptyState text="Đang tải..." /> : (
+              s?.topSellers?.length
+                ? <Bar data={barData} options={BAR_OPTIONS} />
+                : <EmptyState text="Chưa có dữ liệu." />
+            )}
           </div>
         </SectionCard>
 
-        <SectionCard title="Top danh mục">
-          <div className="space-y-2">
-            {topCategories.length === 0 ? <EmptyState text="Chưa có dữ liệu danh mục." /> : topCategories.map((item) => (
-              <div key={item.name} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2 flex items-center justify-between">
-                <p className="text-sm text-primary truncate">{item.name}</p>
-                <span className="text-xs text-text-muted">{item.count} SP</span>
-              </div>
-            ))}
+        {/* Top Products */}
+        <SectionCard title="Top Sản phẩm bán chạy">
+          <div style={{ height: Math.max(160, (s?.topProducts?.length ?? 3) * 48) }}>
+            {loading ? <EmptyState text="Đang tải..." /> : (
+              s?.topProducts?.length
+                ? <Bar data={topProductsData} options={TOP_PRODUCTS_BAR_OPTIONS} />
+                : <EmptyState text="Chưa có dữ liệu." />
+            )}
           </div>
+        </SectionCard>
+
+        {/* Recent Orders */}
+        <SectionCard title="Đơn hàng gần nhất">
+          {loading ? <EmptyState text="Đang tải..." /> : (
+            <div className="space-y-2">
+              {(!s?.recentOrders?.length) ? <EmptyState text="Chưa có đơn hàng." /> : s.recentOrders.map((order) => {
+                const statusColors = { PENDING: 'text-amber-500', CONFIRMED: 'text-blue-500', SHIPPING: 'text-violet-500', DELIVERED: 'text-emerald-600', CANCELLED: 'text-red-500' };
+                const statusLabels = { PENDING: 'Chờ xác nhận', CONFIRMED: 'Đã xác nhận', SHIPPING: 'Đang giao', DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy' };
+                return (
+                  <div key={order.id} className="rounded-xl border border-black/10 bg-white/60 px-3 py-2.5 text-sm flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-primary font-medium font-mono text-xs">#{order.id.slice(0, 8)}</p>
+                      <p className="text-xs text-text-muted truncate">{order.buyerName}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-medium">{currency(order.totalAmount)}</p>
+                      <p className={`text-xs ${statusColors[order.status] || 'text-text-muted'}`}>{statusLabels[order.status] || order.status}</p>
+                    </div>
+                    <Link
+                      to="/staff/orders"
+                      title="Xem danh sách đơn hàng"
+                      className="shrink-0 p-1.5 rounded-lg hover:bg-black/5 text-text-muted hover:text-primary transition-colors"
+                    >
+                      <Eye size={14} />
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </SectionCard>
       </div>
 
@@ -2308,6 +2758,9 @@ const REPORT_TYPES = [
   { id: 'users', label: 'Người dùng' },
   { id: 'products', label: 'Sản phẩm' },
   { id: 'reviews', label: 'Đánh giá' },
+  { id: 'sellerRevenue', label: 'Doanh thu Seller' },
+  { id: 'categoryRevenue', label: 'Doanh thu Danh mục' },
+  { id: 'trend', label: 'Xu hướng (Trend)' },
 ];
 
 export function AdminReportsPage() {
@@ -2480,9 +2933,18 @@ export function AdminReportsPage() {
         {loadingSummary && <p className="text-text-muted text-sm">Đang tải...</p>}
         {!loadingSummary && summary && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <StatCard label={reportType === 'sales' ? 'Số đơn' : 'Số bản ghi'} value={summary.count ?? 0} />
+            <StatCard label={reportType === 'sales' ? 'Số đơn' : reportType === 'sellerRevenue' ? 'Số Seller có doanh thu' : reportType === 'categoryRevenue' ? 'Số danh mục' : reportType === 'trend' ? 'Số ngày có đơn' : 'Số bản ghi'} value={summary.count ?? 0} />
             {reportType === 'sales' && summary.totalAmount != null && (
-              <StatCard label="Tổng doanh thu (đ)" value={new Intl.NumberFormat('vi-VN').format(summary.totalAmount)} />
+              <StatCard label="GMV tổng (đ)" value={new Intl.NumberFormat('vi-VN').format(summary.totalAmount)} />
+            )}
+            {reportType === 'sales' && summary.deliveredAmount != null && (
+              <StatCard label="Doanh thu DELIVERED (đ)" value={new Intl.NumberFormat('vi-VN').format(summary.deliveredAmount)} accentColor="#10B981" />
+            )}
+            {reportType === 'sellerRevenue' && summary.totalRevenue != null && (
+              <StatCard label="Tổng doanh thu Seller (đ)" value={new Intl.NumberFormat('vi-VN').format(summary.totalRevenue)} accentColor="#10B981" />
+            )}
+            {reportType === 'trend' && summary.totalDays != null && (
+              <StatCard label="Khoảng thời gian (ngày)" value={summary.totalDays} />
             )}
           </div>
         )}
@@ -2586,6 +3048,57 @@ export function AdminReportsPage() {
                     ))}
                   />
                 )}
+                {reportType === 'sellerRevenue' && (
+                  <DataTable
+                    columns={['STT', 'Seller', 'Email', 'Số đơn', 'Doanh thu']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.sellerId} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3 font-medium">{row.sellerName}</td>
+                        <td className="py-2 pr-3 text-sm text-text-muted">{row.sellerEmail}</td>
+                        <td className="py-2 pr-3">{row.orderCount}</td>
+                        <td className="py-2 pr-3 font-medium text-emerald-700">{currency(row.revenue)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+                {reportType === 'categoryRevenue' && (
+                  <DataTable
+                    columns={['STT', 'Danh mục', 'Số sản phẩm bán', 'Doanh thu']}
+                    rows={detail.items.map((row, index) => (
+                      <tr key={row.categoryId} className="border-b border-black/5">
+                        <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                        <td className="py-2 pr-3 font-medium">{row.categoryName}</td>
+                        <td className="py-2 pr-3">{row.itemCount}</td>
+                        <td className="py-2 pr-3 font-medium text-emerald-700">{currency(row.revenue)}</td>
+                      </tr>
+                    ))}
+                  />
+                )}
+                {reportType === 'trend' && (() => {
+                  const maxRevenue = Math.max(...detail.items.map((r) => r.revenue || 0), 1);
+                  return (
+                    <DataTable
+                      columns={['STT', 'Ngày', 'Số đơn', 'Doanh thu DELIVERED', 'Biểu đồ']}
+                      rows={detail.items.map((row, index) => {
+                        const barPct = Math.round((row.revenue / maxRevenue) * 100);
+                        return (
+                          <tr key={row.date} className="border-b border-black/5">
+                            <td className="py-2 pr-3 text-center tabular-nums">{index + 1 + (detail.page - 1) * 20}</td>
+                            <td className="py-2 pr-3 font-mono text-sm">{row.date}</td>
+                            <td className="py-2 pr-3">{row.orderCount}</td>
+                            <td className="py-2 pr-3 font-medium text-emerald-700">{currency(row.revenue)}</td>
+                            <td className="py-2 pr-3 w-32">
+                              <div className="h-2 bg-black/5 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${barPct}%` }} />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    />
+                  );
+                })()}
               </div>
             )}
           </>
@@ -2749,7 +3262,14 @@ export function AdminWithdrawalsPage() {
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [processingId, setProcessingId] = useState(null);
-  const [adminNote, setAdminNote] = useState('');
+  // Per-row note state: { [id]: string }
+  const [rowNotes, setRowNotes] = useState({});
+  // Expanded detail panel
+  const [expandedId, setExpandedId] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const currentPage = data.page;
 
   const load = async (page = 1) => {
     setLoading(true);
@@ -2772,13 +3292,37 @@ export function AdminWithdrawalsPage() {
 
   useEffect(() => { load(1); }, [statusFilter]);
 
-  const handleStatus = async (id, status) => {
-    if (!window.confirm(status === 'APPROVED' ? 'Xác nhận duyệt yêu cầu rút tiền? (Bạn cần chuyển khoản cho seller bên ngoài hệ thống.)' : 'Từ chối yêu cầu này?')) return;
-    setProcessingId(id);
+  const toggleDetail = async (req) => {
+    if (expandedId === req.id) {
+      setExpandedId(null);
+      setDetailData(null);
+      return;
+    }
+    setExpandedId(req.id);
+    setDetailData(null);
+    setLoadingDetail(true);
     try {
-      await api.patch(`/admin/withdrawals/${id}`, { status, adminNote: adminNote.trim() || undefined });
-      setAdminNote('');
-      load(data.page);
+      const res = await api.get(`/admin/withdrawals/${req.id}`);
+      setDetailData(res.data?.data || null);
+    } catch (err) {
+      setDetailData({ error: err.response?.data?.message || 'Không tải được chi tiết.' });
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleStatus = async (id, status) => {
+    if (!window.confirm(status === 'APPROVED'
+      ? 'Xác nhận duyệt yêu cầu rút tiền?\n\nLưu ý: Bạn cần chuyển khoản thực tế cho Seller bên ngoài hệ thống trước khi nhấn Duyệt.'
+      : 'Từ chối yêu cầu này?')) return;
+    setProcessingId(id);
+    const note = rowNotes[id] || '';
+    try {
+      await api.patch(`/admin/withdrawals/${id}`, { status, adminNote: note.trim() || undefined });
+      setRowNotes((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      setExpandedId(null);
+      setDetailData(null);
+      load(currentPage);
     } catch (err) {
       setError(err.response?.data?.message || 'Không cập nhật được.');
     } finally {
@@ -2791,58 +3335,197 @@ export function AdminWithdrawalsPage() {
 
   return (
     <PageShell title="Duyệt rút tiền Seller" subtitle="Xem và duyệt/từ chối yêu cầu rút tiền. Sau khi duyệt, chuyển khoản cho seller theo thông tin họ cung cấp.">
-      {error ? <MessageBox type="error" text={error} /> : null}
+      {error ? <div className="mb-4"><MessageBox type="error" text={error} /></div> : null}
       <SectionCard
-        title="Yêu cầu rút tiền"
+        title={`Yêu cầu rút tiền${data.total ? ` (${data.total})` : ''}`}
         action={
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] bg-white/70">
-            <option value="">Tất cả</option>
-            <option value="PENDING">Chờ duyệt</option>
-            <option value="APPROVED">Đã duyệt</option>
-            <option value="REJECTED">Từ chối</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] bg-white/70">
+              <option value="">Tất cả</option>
+              <option value="PENDING">Chờ duyệt</option>
+              <option value="APPROVED">Đã duyệt</option>
+              <option value="REJECTED">Từ chối</option>
+            </select>
+            <button type="button" onClick={() => load(currentPage)} className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>
+          </div>
         }
       >
         {loading ? <EmptyState text="Đang tải..." /> : null}
         {!loading && (!data.items || data.items.length === 0) ? <EmptyState text="Chưa có yêu cầu nào." /> : null}
         {!loading && data.items?.length > 0 ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2 mb-2">
-              <label className="text-xs text-text-muted">Ghi chú admin (dùng khi duyệt/từ chối):</label>
-              <input type="text" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="VD: Đã chuyển khoản MB 1234567890" className="flex-1 min-w-48 h-9 rounded-xl border border-black/10 px-3 bg-white/70 text-sm" />
-            </div>
+          <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b border-black/10 text-text-muted uppercase tracking-[0.08em] text-xs">
                     <th className="py-2 pr-3">Seller</th>
                     <th className="py-2 pr-3">Số tiền</th>
+                    <th className="py-2 pr-3">Ghi chú Seller</th>
                     <th className="py-2 pr-3">Ngày yêu cầu</th>
                     <th className="py-2 pr-3">Trạng thái</th>
+                    <th className="py-2 pr-3">Chi tiết</th>
                     <th className="py-2 pr-3">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items.map((req) => (
-                    <tr key={req.id} className="border-b border-black/5">
-                      <td className="py-3 pr-3">{req.seller?.fullName || req.seller?.email || '--'}</td>
-                      <td className="py-3 pr-3 font-medium">{currency(req.amount)}</td>
-                      <td className="py-3 pr-3">{formatDate(req.createdAt)}</td>
-                      <td className="py-3 pr-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[req.status] || ''}`}>{statusLabel[req.status] || req.status}</span></td>
-                      <td className="py-3 pr-3">
-                        {req.status === 'PENDING' ? (
-                          <span className="flex items-center gap-2">
-                            <button type="button" onClick={() => handleStatus(req.id, 'APPROVED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs disabled:opacity-60">Duyệt</button>
-                            <button type="button" onClick={() => handleStatus(req.id, 'REJECTED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-red-600 text-white text-xs disabled:opacity-60">Từ chối</button>
+                    <>
+                      <tr
+                        key={req.id}
+                        className={`border-b border-black/5 cursor-pointer hover:bg-white/40 transition-colors ${expandedId === req.id ? 'bg-amber-50/40' : ''}`}
+                        onClick={() => toggleDetail(req)}
+                      >
+                        <td className="py-3 pr-3">
+                          <p className="font-medium">{req.seller?.fullName || '--'}</p>
+                          <p className="text-xs text-text-muted">{req.seller?.email || '--'}</p>
+                        </td>
+                        <td className="py-3 pr-3 font-medium text-primary">{currency(req.amount)}</td>
+                        <td className="py-3 pr-3 max-w-40 truncate text-text-muted text-xs">{req.note || '--'}</td>
+                        <td className="py-3 pr-3 text-sm">{formatDate(req.createdAt)}</td>
+                        <td className="py-3 pr-3">
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[req.status] || ''}`}>
+                            {statusLabel[req.status] || req.status}
                           </span>
-                        ) : null}
-                      </td>
-                    </tr>
+                          {req.adminNote ? <p className="text-xs text-text-muted mt-1 max-w-32 truncate" title={req.adminNote}>Ghi chú: {req.adminNote}</p> : null}
+                        </td>
+                        <td className="py-3 pr-3">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); toggleDetail(req); }}
+                            className="text-xs uppercase tracking-[0.1em] text-primary/70 hover:text-primary"
+                          >
+                            {expandedId === req.id ? 'Ẩn ▲' : 'Xem ▼'}
+                          </button>
+                        </td>
+                        <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
+                          {req.status === 'PENDING' ? (
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={rowNotes[req.id] || ''}
+                                onChange={(e) => setRowNotes((prev) => ({ ...prev, [req.id]: e.target.value }))}
+                                placeholder="Ghi chú admin..."
+                                className="w-full h-8 rounded-lg border border-black/10 px-2 bg-white/70 text-xs"
+                              />
+                              <div className="flex gap-1.5">
+                                <button type="button" onClick={() => handleStatus(req.id, 'APPROVED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs disabled:opacity-60 hover:bg-emerald-700 transition-colors">Duyệt</button>
+                                <button type="button" onClick={() => handleStatus(req.id, 'REJECTED')} disabled={processingId === req.id} className="h-8 px-3 rounded-lg bg-red-600 text-white text-xs disabled:opacity-60 hover:bg-red-700 transition-colors">Từ chối</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-text-muted">Đã xử lý</span>
+                          )}
+                        </td>
+                      </tr>
+                      {expandedId === req.id ? (
+                        <tr key={`${req.id}-detail`} className="bg-amber-50/30 border-b border-amber-100">
+                          <td colSpan={7} className="px-4 pb-4 pt-2">
+                            {loadingDetail ? (
+                              <p className="text-sm text-text-muted py-2">Đang tải chi tiết...</p>
+                            ) : !detailData ? null : detailData.error ? (
+                              <MessageBox type="error" text={detailData.error} />
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* Seller balance */}
+                                <div className="rounded-xl border border-amber-200 bg-white/70 p-4">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Số dư & Ví Seller</p>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <span className="text-text-muted">Số dư khả dụng</span>
+                                      <span className="font-bold text-emerald-700">{currency(detailData.sellerBalance?.balance ?? 0)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-text-muted">Tổng thu nhập</span>
+                                      <span className="font-medium">{currency(detailData.sellerBalance?.income ?? 0)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-text-muted">Đã rút</span>
+                                      <span className="font-medium">{currency(detailData.sellerBalance?.withdrawn ?? 0)}</span>
+                                    </div>
+                                    <div className="flex justify-between pt-1 border-t border-black/10">
+                                      <span className="text-text-muted">Đơn đang xử lý</span>
+                                      <span className={`font-medium ${detailData.inFlightOrderCount > 0 ? 'text-amber-600' : 'text-text-muted'}`}>{detailData.inFlightOrderCount} đơn</span>
+                                    </div>
+                                  </div>
+                                  {Number(req.amount) > (detailData.sellerBalance?.balance ?? 0) ? (
+                                    <div className="mt-3 p-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-1.5">
+                                      <AlertTriangle size={12} /> Số dư không đủ để duyệt!
+                                    </div>
+                                  ) : (
+                                    <div className="mt-3 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center gap-1.5">
+                                      <CircleCheckBig size={12} /> Số dư đủ để duyệt.
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Bank info from note */}
+                                <div className="rounded-xl border border-amber-200 bg-white/70 p-4">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Thông tin ngân hàng</p>
+                                  <div className="text-sm space-y-1">
+                                    <p className="text-text-muted text-xs mb-2">Seller cung cấp:</p>
+                                    <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-primary whitespace-pre-wrap break-words text-xs min-h-12">
+                                      {req.note || '(Seller không để lại ghi chú)'}
+                                    </div>
+                                  </div>
+                                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mt-4 mb-2">Liên hệ Seller</p>
+                                  <div className="text-sm space-y-1">
+                                    <p><span className="text-text-muted">Email:</span> {detailData.request?.seller?.email || '--'}</p>
+                                    <p><span className="text-text-muted">SĐT:</span> {detailData.request?.seller?.phone || '--'}</p>
+                                  </div>
+                                </div>
+
+                                {/* Recent delivered orders */}
+                                <div className="rounded-xl border border-amber-200 bg-white/70 p-4">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">10 đơn DELIVERED gần nhất</p>
+                                  {(!detailData.recentDeliveredOrders?.length) ? (
+                                    <EmptyState text="Chưa có đơn DELIVERED." />
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {detailData.recentDeliveredOrders.map((o) => (
+                                        <div key={o.id} className="flex justify-between text-xs py-1 border-b border-black/5">
+                                          <span className="font-mono text-text-muted">{o.id.slice(0, 8)}...</span>
+                                          <span className="font-medium text-emerald-700">{currency(o.totalAmount)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+
+            {/* Pagination */}
+            {data.totalPages > 1 ? (
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-black/10">
+                <p className="text-xs text-text-muted">Trang {data.page} / {data.totalPages} &bull; {data.total} yêu cầu</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => load(data.page - 1)}
+                    disabled={data.page <= 1}
+                    className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
+                  >
+                    ← Trước
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => load(data.page + 1)}
+                    disabled={data.page >= data.totalPages}
+                    className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
+                  >
+                    Sau →
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </SectionCard>
     </PageShell>

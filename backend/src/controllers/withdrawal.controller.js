@@ -51,10 +51,20 @@ async function updateStatus(req, res, next) {
   }
 }
 
+async function getByIdForAdmin(req, res, next) {
+  try {
+    const data = await withdrawalService.getById(req.params.id, req.user.role);
+    return sendSuccess(res, 'Thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getBalance,
   getMyRequests,
   createRequest,
   listForAdmin,
   updateStatus,
+  getByIdForAdmin,
 };

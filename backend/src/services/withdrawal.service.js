@@ -129,10 +129,46 @@ async function updateStatus(id, status, adminNote, userRole) {
   });
 }
 
+async function getById(id, userRole) {
+  if (!['ADMIN', 'STAFF'].includes(userRole)) {
+    throw Object.assign(new Error('Không có quyền'), { statusCode: 403 });
+  }
+  const req = await prisma.withdrawalRequest.findUnique({
+    where: { id },
+    include: { seller: { select: { id: true, fullName: true, email: true, phone: true } } },
+  });
+  if (!req) throw Object.assign(new Error('Yêu cầu không tồn tại'), { statusCode: 404 });
+
+  const [balanceInfo, inFlightCount, recentDelivered] = await Promise.all([
+    getBalance(req.sellerId),
+    prisma.order.count({
+      where: { sellerId: req.sellerId, status: { in: ['PENDING', 'CONFIRMED', 'SHIPPING'] } },
+    }),
+    prisma.order.findMany({
+      where: { sellerId: req.sellerId, status: 'DELIVERED' },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, totalAmount: true, createdAt: true },
+    }),
+  ]);
+
+  return {
+    request: req,
+    sellerBalance: balanceInfo,
+    inFlightOrderCount: inFlightCount,
+    recentDeliveredOrders: recentDelivered.map((o) => ({
+      id: o.id,
+      totalAmount: Number(o.totalAmount),
+      createdAt: o.createdAt,
+    })),
+  };
+}
+
 module.exports = {
   getBalance,
   createRequest,
   getMyRequests,
   listForAdmin,
   updateStatus,
+  getById,
 };
