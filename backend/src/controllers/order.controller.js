@@ -61,6 +61,19 @@ async function createVnpayUrl(req, res, next) {
   }
 }
 
+async function createVnpayUrlForGroup(req, res, next) {
+  try {
+    const { orderGroupId } = req.body;
+    if (!orderGroupId || typeof orderGroupId !== 'string') {
+      return res.status(400).json({ status: 400, message: 'Thiếu orderGroupId' });
+    }
+    const data = await orderService.createVnpayPaymentUrlForGroup(orderGroupId.trim(), req.user.id, req);
+    return sendSuccess(res, 'Thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function simulateNext(req, res, next) {
   try {
     const data = await orderService.simulateNextStatus(req.params.id, req.user.id);
@@ -70,4 +83,4 @@ async function simulateNext(req, res, next) {
   }
 }
 
-module.exports = { create, myOrders, manageOrders, getById, updateStatus, createVnpayUrl, simulateNext };
+module.exports = { create, myOrders, manageOrders, getById, updateStatus, createVnpayUrl, createVnpayUrlForGroup, simulateNext };

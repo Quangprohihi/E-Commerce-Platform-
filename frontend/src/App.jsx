@@ -24,6 +24,8 @@ import {
   SellerOrdersPage,
   SellerProductsPage,
   SellerDashboardPage,
+  SellerWalletPage,
+  AdminWithdrawalsPage,
   StaffCustomersPage,
   StaffOrdersPage,
   StaffProductsPage,
@@ -135,6 +137,16 @@ function App() {
             <ProtectedRoute>
               <RoleRoute allowedRoles={['SELLER', 'ADMIN']}>
                 <SellerKycPage />
+              </RoleRoute>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="seller/wallet"
+          element={(
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={['SELLER', 'ADMIN']}>
+                <SellerWalletPage />
               </RoleRoute>
             </ProtectedRoute>
           )}
@@ -257,6 +269,16 @@ function App() {
             <ProtectedRoute>
               <RoleRoute allowedRoles={['ADMIN']}>
                 <AdminUsersPage />
+              </RoleRoute>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="admin/withdrawals"
+          element={(
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={['ADMIN', 'STAFF']}>
+                <AdminWithdrawalsPage />
               </RoleRoute>
             </ProtectedRoute>
           )}

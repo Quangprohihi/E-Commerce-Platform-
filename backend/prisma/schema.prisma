@@ -65,6 +65,12 @@ enum MessageRole {
   AI
 }
 
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -75,11 +81,13 @@ model User {
   role      Role     @default(BUYER)
   createdAt DateTime @default(now()) @map("created_at")
 
-  sellerProfile SellerProfile?
-  products      Product[]
-  orders        Order[]
-  reviews       Review[]
-  chatSessions  ChatSession[]
+  sellerProfile    SellerProfile?
+  products         Product[]
+  orders           Order[]
+  ordersAsSeller   Order[]           @relation("OrderSeller")
+  reviews          Review[]
+  chatSessions     ChatSession[]
+  withdrawalRequests WithdrawalRequest[]
 
   @@map("users")
 }
@@ -144,6 +152,8 @@ model Product {
 model Order {
   id               String      @id @default(cuid())
   buyerId          String      @map("buyer_id")
+  sellerId         String?     @map("seller_id")
+  orderGroupId     String?     @map("order_group_id")
   totalAmount      Decimal     @map("total_amount") @db.Decimal(12, 2)
   status           OrderStatus @default(PENDING)
   shippingAddress  String     @map("shipping_address")
@@ -151,13 +161,30 @@ model Order {
   note             String?
   paymentMethod    String?     @map("payment_method")
   vnpTransactionNo String?     @map("vnp_transaction_no")
+  shippedAt        DateTime?  @map("shipped_at")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
-  buyer  User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyer   User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User?         @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
   details OrderDetail[]
 
   @@map("orders")
+}
+
+model WithdrawalRequest {
+  id         String            @id @default(cuid())
+  sellerId   String            @map("seller_id")
+  amount     Decimal           @db.Decimal(12, 2)
+  status     WithdrawalStatus  @default(PENDING)
+  note       String?           // ghi chú từ seller (tùy chọn)
+  adminNote  String?           @map("admin_note") @db.Text
+  createdAt  DateTime         @default(now()) @map("created_at")
+  processedAt DateTime?       @map("processed_at")
+
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@map("withdrawal_requests")
 }
 
 model OrderDetail {
