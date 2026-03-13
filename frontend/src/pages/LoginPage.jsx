@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { getRoleHomePath } from '../utils/auth';
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -40,7 +42,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen pt-28 pb-16 px-4">
       <div className="max-w-md mx-auto glass-strong rounded-3xl p-6 md:p-8">
-        <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f] mb-2">Kính Tốt</p>
+        <p className="text-xs uppercase tracking-[0.18em] text-[#7f786f] mb-2">KÍNH TỐT</p>
         <h1 className="font-serif text-3xl mb-6">Đăng nhập</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -57,21 +59,43 @@ export default function LoginPage() {
               required
             />
           </div>
+
           <div>
             <label className="block text-xs uppercase tracking-[0.12em] text-[#7f786f] mb-2" htmlFor="password">
               Mật khẩu
             </label>
-            <input
-              id="password"
-              type="password"
-              value={form.password}
-              onChange={(e) => handleChange('password', e.target.value)}
-              className="w-full h-11 rounded-full px-4 border border-black/10 bg-white/70 focus:outline-none focus:ring-2 focus:ring-primary/20"
-              placeholder="••••••••"
-              required
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(e) => handleChange('password', e.target.value)}
+                className="w-full h-11 rounded-full pl-4 pr-12 border border-black/10 bg-white/70 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="********"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7f786f] hover:text-primary transition-colors"
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            <div className="mt-2 text-right">
+              <Link
+                to={form.email.trim() ? `/forgot-password?email=${encodeURIComponent(form.email.trim())}` : '/forgot-password'}
+                className="text-xs text-primary hover:underline"
+              >
+                Quên mật khẩu?
+              </Link>
+            </div>
           </div>
+
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
           <button
             type="submit"
             disabled={loading}
@@ -80,6 +104,7 @@ export default function LoginPage() {
             {loading ? 'Đang xử lý...' : 'Đăng nhập'}
           </button>
         </form>
+
         <p className="mt-5 text-sm text-text-muted">
           Chưa có tài khoản?{' '}
           <Link to="/register" className="text-primary hover:underline">

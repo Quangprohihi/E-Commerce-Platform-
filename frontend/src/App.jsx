@@ -6,6 +6,8 @@ import ProductListPage from './pages/ProductListPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import CartPage from './pages/CartPage';
 import ComparePage from './pages/ComparePage';
 import CheckoutPage from './pages/CheckoutPage';
@@ -45,6 +47,8 @@ function App() {
         <Route path="products/:slug" element={<ProductDetailPage />} />
         <Route path="login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
         <Route path="register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="cart" element={<CartPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="payment/result" element={<PaymentResultPage />} />
