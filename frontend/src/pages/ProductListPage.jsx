@@ -8,12 +8,15 @@ import { filterMockProducts, mockProducts, sortProducts } from '../data/mockProd
 import { addToCompare } from './ComparePage';
 import { ATTR_TRANSLATIONS, translateAttr } from '../utils/translations';
 
+const PRODUCTS_PER_PAGE = 12;
+
 export default function ProductListPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [data, setData] = useState({ items: [], total: 0, isFallback: false });
+  const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 1, isFallback: false });
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState(searchParams.get('sort') || 'newest');
+  const page = Math.max(1, parseInt(searchParams.get('page'), 10) || 1);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchParams.get('search') || '');
 
@@ -40,24 +43,51 @@ export default function ProductListPage() {
     if (filters.minPrice) params.set('minPrice', filters.minPrice);
     if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
     if (filters.search) params.set('search', filters.search);
+    params.set('sort', sortBy);
+    params.set('page', String(page));
+    params.set('limit', String(PRODUCTS_PER_PAGE));
     setLoading(true);
     api.get(`/products?${params}`)
       .then((res) => {
-        const items = res.data?.data?.items || [];
+        const payload = res.data?.data || {};
+        const items = payload.items || [];
         if (!items.length) {
           const fallback = sortProducts(filterMockProducts(mockProducts, filters), sortBy);
-          setData({ items: fallback, total: fallback.length, isFallback: true });
+          const fallbackTotal = fallback.length;
+          const start = (page - 1) * PRODUCTS_PER_PAGE;
+          const paged = fallback.slice(start, start + PRODUCTS_PER_PAGE);
+          setData({
+            items: paged,
+            total: fallbackTotal,
+            page,
+            totalPages: Math.max(1, Math.ceil(fallbackTotal / PRODUCTS_PER_PAGE)),
+            isFallback: true,
+          });
           return;
         }
-        const sorted = sortProducts(items, sortBy);
-        setData({ items: sorted, total: sorted.length, isFallback: false });
+        setData({
+          items,
+          total: payload.total ?? items.length,
+          page: payload.page ?? page,
+          totalPages: payload.totalPages ?? 1,
+          isFallback: false,
+        });
       })
       .catch(() => {
         const fallback = sortProducts(filterMockProducts(mockProducts, filters), sortBy);
-        setData({ items: fallback, total: fallback.length, isFallback: true });
+        const fallbackTotal = fallback.length;
+        const start = (page - 1) * PRODUCTS_PER_PAGE;
+        const paged = fallback.slice(start, start + PRODUCTS_PER_PAGE);
+        setData({
+          items: paged,
+          total: fallbackTotal,
+          page,
+          totalPages: Math.max(1, Math.ceil(fallbackTotal / PRODUCTS_PER_PAGE)),
+          isFallback: true,
+        });
       })
       .finally(() => setLoading(false));
-  }, [searchParams, sortBy]);
+  }, [searchParams, sortBy, page]);
 
   useEffect(() => {
     setLocalSearch(searchParams.get('search') || '');
@@ -71,6 +101,7 @@ export default function ProductListPage() {
     } else {
       params.delete('search');
     }
+    params.delete('page');
     navigate(`/products?${params.toString()}`);
   };
 
@@ -105,6 +136,7 @@ export default function ProductListPage() {
               const active = filters[group.key] === value;
               const params = new URLSearchParams(searchParams);
               params.set(group.key, value);
+              params.delete('page');
               return (
                 <Link
                   key={value}
@@ -134,6 +166,7 @@ export default function ProductListPage() {
             const params = new URLSearchParams(searchParams);
             if (item.min) params.set('minPrice', item.min); else params.delete('minPrice');
             if (item.max) params.set('maxPrice', item.max); else params.delete('maxPrice');
+            params.delete('page');
             const active = filters.minPrice === item.min && filters.maxPrice === item.max;
             return (
               <Link
@@ -188,7 +221,14 @@ export default function ProductListPage() {
               <SlidersHorizontal size={14} />
               <select
                 value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
+                onChange={(event) => {
+                  const newSort = event.target.value;
+                  setSortBy(newSort);
+                  const params = new URLSearchParams(searchParams);
+                  params.set('sort', newSort);
+                  params.delete('page');
+                  navigate(`/products?${params.toString()}`);
+                }}
                 className="bg-transparent text-xs uppercase tracking-[0.12em] focus:outline-none"
               >
                 <option value="newest">Mới nhất</option>
@@ -223,6 +263,79 @@ export default function ProductListPage() {
         </div>
         {!loading && (!data.items || data.items.length === 0) ? (
           <p className="text-text-muted mt-6">Chưa có sản phẩm phù hợp bộ lọc.</p>
+        ) : null}
+        {!loading && data.totalPages > 1 ? (
+          <div className="flex items-center justify-between mt-8 gap-3 flex-wrap">
+            <p className="text-xs uppercase tracking-[0.12em] text-text-muted">
+              Trang {data.page}/{data.totalPages} • Tổng {data.total} sản phẩm
+            </p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                disabled={data.page <= 1}
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  if (data.page - 1 <= 1) params.delete('page');
+                  else params.set('page', String(data.page - 1));
+                  navigate(`/products?${params.toString()}`);
+                }}
+                className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40 hover:bg-white/60 transition-colors"
+              >
+                Trước
+              </button>
+              {(() => {
+                const total = data.totalPages;
+                const current = data.page;
+                const pages = [];
+                if (total <= 7) {
+                  for (let i = 1; i <= total; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (current > 3) pages.push('…');
+                  const start = Math.max(2, current - 1);
+                  const end = Math.min(total - 1, current + 1);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  if (current < total - 2) pages.push('…');
+                  if (total > 1) pages.push(total);
+                }
+                return pages.map((p, idx) =>
+                  p === '…' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-text-muted">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        const params = new URLSearchParams(searchParams);
+                        if (Number(p) === 1) params.delete('page');
+                        else params.set('page', String(p));
+                        navigate(`/products?${params.toString()}`);
+                      }}
+                      className={`h-9 min-w-[2.25rem] rounded-full border text-xs font-medium transition-colors ${
+                        p === current
+                          ? 'bg-primary text-white border-primary'
+                          : 'border-black/20 hover:bg-white/60'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+              <button
+                type="button"
+                disabled={data.page >= data.totalPages}
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  params.set('page', String(data.page + 1));
+                  navigate(`/products?${params.toString()}`);
+                }}
+                className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40 hover:bg-white/60 transition-colors"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
 

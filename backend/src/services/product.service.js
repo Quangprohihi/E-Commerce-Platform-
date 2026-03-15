@@ -109,11 +109,22 @@ function buildWhere(query) {
   return where;
 }
 
+function getOrderBy(sort) {
+  const map = {
+    newest: { createdAt: 'desc' },
+    'price-asc': { price: 'asc' },
+    'price-desc': { price: 'desc' },
+    'name-asc': { name: 'asc' },
+  };
+  return map[sort] || map.newest;
+}
+
 async function getList(query = {}) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(query.limit, 10) || 12));
   const skip = (page - 1) * limit;
   const where = buildWhere(query);
+  const orderBy = getOrderBy(query.sort);
 
   const [items, total] = await Promise.all([
     prisma.product.findMany({
@@ -122,7 +133,7 @@ async function getList(query = {}) {
         category: { select: { id: true, name: true, slug: true } },
         seller: { select: { id: true, fullName: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip,
       take: limit,
     }),
