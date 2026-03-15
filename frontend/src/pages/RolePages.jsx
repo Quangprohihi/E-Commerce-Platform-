@@ -1952,21 +1952,22 @@ export function SellerWalletPage() {
         <StatCard label="Đã rút" value={currency(data.withdrawn)} icon={CreditCard} accentColor="#7f786f" />
       </div>
 
+      <div className="space-y-6">
       <SectionCard title="Yêu cầu rút tiền">
-        <form onSubmit={handleWithdraw} className="flex flex-wrap items-end gap-4 mb-4">
+        <form onSubmit={handleWithdraw} className="grid grid-cols-1 lg:grid-cols-[160px_1fr_auto] gap-4 items-end">
           <div>
             <label className="block text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Số tiền (đ)</label>
-            <input type="number" min="1" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="VD: 500000" className="w-40 h-11 rounded-xl border border-black/10 px-3 bg-white/70" />
+            <input type="number" min="1" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="VD: 500000" className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70" />
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="min-w-0">
             <label className="block text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Ghi chú (tùy chọn)</label>
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Số tài khoản, ngân hàng..." className="w-full h-11 rounded-xl border border-black/10 px-3 bg-white/70" />
           </div>
-          <button type="submit" disabled={submitting || loading} className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60">
+          <button type="submit" disabled={submitting || loading} className="h-11 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] disabled:opacity-60 whitespace-nowrap">
             {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
           </button>
         </form>
-        <p className="text-xs text-text-muted">Tiền chỉ được cộng vào số dư khi đơn hàng đã giao (DELIVERED) và buyer đã thanh toán. Admin sẽ xử lý và chuyển khoản theo thông tin bạn cung cấp.</p>
+        <p className="text-xs text-text-muted mt-4">Tiền chỉ được cộng vào số dư khi đơn hàng đã giao (DELIVERED) và buyer đã thanh toán. Admin sẽ xử lý và chuyển khoản theo thông tin bạn cung cấp.</p>
       </SectionCard>
 
       <SectionCard title="Lịch sử yêu cầu rút tiền" action={<button type="button" onClick={load} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Làm mới</button>}>
@@ -1995,6 +1996,7 @@ export function SellerWalletPage() {
           </div>
         ) : null}
       </SectionCard>
+      </div>
     </PageShell>
   );
 }
