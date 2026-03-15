@@ -88,12 +88,34 @@ async function create(buyerId, body) {
   };
 }
 
-async function getMyOrders(userId) {
-  return prisma.order.findMany({
-    where: { buyerId: userId },
-    include: { details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } } },
-    orderBy: { createdAt: 'desc' },
-  });
+async function getMyOrders(userId, query = {}) {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
+  const skip = (page - 1) * limit;
+  const where = { buyerId: userId };
+
+  const [items, total, pendingCount, deliveredCount] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: { details: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } } },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.order.count({ where }),
+    prisma.order.count({ where: { ...where, status: 'PENDING' } }),
+    prisma.order.count({ where: { ...where, status: 'DELIVERED' } }),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    pendingCount,
+    deliveredCount,
+  };
 }
 
 async function getManageOrders(userId, userRole, query = {}) {

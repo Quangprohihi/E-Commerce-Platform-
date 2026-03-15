@@ -12,7 +12,7 @@ async function create(req, res, next) {
 
 async function myOrders(req, res, next) {
   try {
-    const data = await orderService.getMyOrders(req.user.id);
+    const data = await orderService.getMyOrders(req.user.id, req.query);
     return sendSuccess(res, 'Thành công', data);
   } catch (err) {
     next(err);

@@ -151,19 +151,36 @@ export function BuyerDashboardPage() {
   const [orders, setOrders] = useState([]);
   const [reviews, setReviews] = useState([]);
 
+  const [ordersMeta, setOrdersMeta] = useState({ total: 0, pendingCount: 0, deliveredCount: 0 });
+
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
       try {
         const [ordersRes, reviewsRes] = await Promise.all([
-          api.get('/orders'),
+          api.get('/orders', { params: { page: 1, limit: 50 } }),
           user?.id ? api.get('/reviews', { params: { userId: user.id, limit: 100 } }) : Promise.resolve({ data: { data: { items: [] } } }),
         ]);
 
         if (cancelled) return;
 
-        setOrders(ordersRes.data?.data || []);
+        const ordersPayload = ordersRes.data?.data || {};
+        const ordersList = Array.isArray(ordersPayload) ? ordersPayload : (ordersPayload.items || []);
+        setOrders(ordersList);
+        if (!Array.isArray(ordersPayload)) {
+          setOrdersMeta({
+            total: ordersPayload.total ?? 0,
+            pendingCount: ordersPayload.pendingCount ?? 0,
+            deliveredCount: ordersPayload.deliveredCount ?? 0,
+          });
+        } else {
+          setOrdersMeta({
+            total: ordersList.length,
+            pendingCount: ordersList.filter((o) => o.status === 'PENDING').length,
+            deliveredCount: ordersList.filter((o) => o.status === 'DELIVERED').length,
+          });
+        }
         setReviews(reviewsRes.data?.data?.items || []);
       } catch {
         if (cancelled) return;
@@ -176,8 +193,8 @@ export function BuyerDashboardPage() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
-  const pendingOrders = useMemo(() => orders.filter((item) => item.status === 'PENDING').length, [orders]);
-  const deliveredOrders = useMemo(() => orders.filter((item) => item.status === 'DELIVERED').length, [orders]);
+  const pendingOrders = ordersMeta.pendingCount;
+  const deliveredOrders = ordersMeta.deliveredCount;
 
   const topProducts = useMemo(() => {
     const bucket = new Map();
@@ -200,7 +217,7 @@ export function BuyerDashboardPage() {
   return (
     <PageShell title="Trang Buyer" subtitle="Theo dõi đơn hàng, hồ sơ cá nhân và đánh giá sản phẩm.">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Tổng đơn" value={orders.length} icon={ShoppingBag} accentColor="#3B82F6" />
+        <StatCard label="Tổng đơn" value={ordersMeta.total} icon={ShoppingBag} accentColor="#3B82F6" />
         <StatCard label="Đang chờ" value={pendingOrders} icon={Clock3} accentColor="#3B82F6" />
         <StatCard label="Đã giao" value={deliveredOrders} icon={CircleCheckBig} accentColor="#3B82F6" />
         <StatCard label="Reviews" value={reviews.length} icon={Star} accentColor="#3B82F6" />
@@ -325,6 +342,8 @@ export function BuyerOrdersPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 20, pendingCount: 0, deliveredCount: 0 });
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -336,12 +355,24 @@ export function BuyerOrdersPage() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewedProductIds, setReviewedProductIds] = useState(new Set());
 
-  const loadOrders = async () => {
+  const loadOrders = async (pageNum = page) => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.get('/orders');
-      setOrders(response.data?.data || []);
+      const response = await api.get('/orders', { params: { page: pageNum, limit: meta.limit } });
+      const payload = response.data?.data || {};
+      const items = Array.isArray(payload) ? payload : (payload.items || []);
+      setOrders(items);
+      if (!Array.isArray(payload)) {
+        setMeta((prev) => ({
+          ...prev,
+          total: payload.total ?? prev.total,
+          totalPages: payload.totalPages ?? prev.totalPages,
+          pendingCount: payload.pendingCount ?? prev.pendingCount,
+          deliveredCount: payload.deliveredCount ?? prev.deliveredCount,
+        }));
+        setPage(payload.page ?? pageNum);
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể tải đơn hàng.');
     } finally {
@@ -360,7 +391,7 @@ export function BuyerOrdersPage() {
   };
 
   useEffect(() => {
-    loadOrders();
+    loadOrders(1);
     loadReviewedProducts();
   }, [user?.id]);
 
@@ -386,7 +417,7 @@ export function BuyerOrdersPage() {
       await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'CANCELLED' });
       const refreshed = await api.get(`/orders/${selectedOrder.id}`);
       setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'CANCELLED' });
-      await loadOrders();
+      await loadOrders(page);
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể hủy đơn hàng.');
     } finally {
@@ -403,11 +434,29 @@ export function BuyerOrdersPage() {
     setError('');
     setSuccessMsg('');
     try {
-      await api.patch(`/orders/${orderId}/status`, { status: 'DELIVERED' });
+      const res = await api.patch(`/orders/${selectedOrder.id}/simulate-next`);
+      const updated = res.data?.data;
+      setSelectedOrder(updated || selectedOrder);
+      setSuccessMsg(`Chuyển sang ${updated?.status || 'trạng thái mới'} thành công!`);
+      await loadOrders(page);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể chuyển trạng thái.');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const confirmReceived = async () => {
+    if (!selectedOrder?.id || selectedOrder?.status !== 'SHIPPING') return;
+    setSimulating(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'DELIVERED' });
       setSuccessMsg('Đã xác nhận nhận hàng. Bạn có thể đánh giá sản phẩm bên dưới.');
-      const refreshed = await api.get(`/orders/${orderId}`);
-      setSelectedOrder(refreshed.data?.data || { ...currentOrder, status: 'DELIVERED' });
-      await loadOrders();
+      const refreshed = await api.get(`/orders/${selectedOrder.id}`);
+      setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'DELIVERED' });
+      await loadOrders(page);
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể xác nhận.');
     } finally {
@@ -438,9 +487,9 @@ export function BuyerOrdersPage() {
     }
   };
 
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter((item) => item.status === 'PENDING').length;
-  const deliveredOrders = orders.filter((item) => item.status === 'DELIVERED').length;
+  const totalOrders = meta.total;
+  const pendingOrders = meta.pendingCount;
+  const deliveredOrders = meta.deliveredCount;
 
   // Products from DELIVERED selected order that haven't been reviewed yet
   const reviewableProducts = useMemo(() => {
@@ -466,7 +515,7 @@ export function BuyerOrdersPage() {
 
       <SectionCard
         title="Danh sách đơn hàng"
-        action={<button type="button" onClick={loadOrders} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
+        action={<button type="button" onClick={() => loadOrders(page)} className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em]">Refresh</button>}
       >
         {loading ? <EmptyState text="Đang tải dữ liệu..." /> : null}
         {error && !selectedOrder ? <MessageBox type="error" text={error} /> : null}
@@ -511,6 +560,41 @@ export function BuyerOrdersPage() {
               );
             })}
           />
+        ) : null}
+        {!loading && meta.totalPages > 1 ? (
+          <div className="flex items-center justify-between mt-4 gap-3 flex-wrap">
+            <p className="text-xs uppercase tracking-[0.12em] text-text-muted">
+              Trang {page}/{meta.totalPages} • Tổng {meta.total} đơn
+            </p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button type="button" disabled={page <= 1} onClick={() => loadOrders(page - 1)} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
+                Trước
+              </button>
+              {(() => {
+                const total = meta.totalPages;
+                const current = page;
+                const pages = [];
+                if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+                else {
+                  pages.push(1);
+                  if (current > 3) pages.push('…');
+                  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+                  if (current < total - 2) pages.push('…');
+                  if (total > 1) pages.push(total);
+                }
+                return pages.map((p, idx) =>
+                  p === '…' ? <span key={`ellipsis-${idx}`} className="px-2 text-text-muted">…</span> : (
+                    <button key={p} type="button" onClick={() => loadOrders(p)} className={`h-9 min-w-[2.25rem] rounded-full border text-xs font-medium transition-colors ${p === current ? 'bg-primary text-white border-primary' : 'border-black/20 hover:bg-white/60'}`}>
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+              <button type="button" disabled={page >= meta.totalPages} onClick={() => loadOrders(page + 1)} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
+                Sau
+              </button>
+            </div>
+          </div>
         ) : null}
       </SectionCard>
 
@@ -591,22 +675,16 @@ export function BuyerOrdersPage() {
                   <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Sản phẩm trong đơn</p>
                   <div className="space-y-3">
                     {selectedOrder.details.map((detail) => (
-                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-3 text-sm p-3 rounded-xl border border-black/5 bg-white/80">
-                        <div className="flex items-center gap-3">
+                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-4 text-sm p-3 rounded-xl border border-black/5 hover:bg-black/[0.02]">
+                        <div className="flex items-center gap-4 min-w-0">
                           {detail.product?.images?.[0] ? (
-                            <img src={detail.product.images[0]} alt="" className="w-12 h-12 rounded-lg object-cover border border-black/10" />
+                            <img src={detail.product.images[0]} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 border border-black/5" />
                           ) : (
-                            <div className="w-12 h-12 rounded-lg bg-black/5 flex items-center justify-center"><Package size={16} className="text-black/20" /></div>
+                            <div className="w-16 h-16 rounded-xl bg-black/5 flex items-center justify-center shrink-0 border border-black/5"><Package size={20} className="text-black/20" /></div>
                           )}
-                          <div>
-                            <p className="text-primary font-medium">{detail.product?.name || detail.productId}</p>
-                            <p className="text-xs text-text-muted mt-0.5">{currency(detail.price)} / sản phẩm</p>
-                          </div>
+                          <p className="text-primary font-medium truncate">{detail.product?.name || detail.productId}</p>
                         </div>
-                        <div className="text-right whitespace-nowrap">
-                          <p className="text-xs text-text-muted">SL: {detail.quantity}</p>
-                          <p className="text-sm font-medium text-primary">{currency(Number(detail.quantity || 1) * Number(detail.price || 0))}</p>
-                        </div>
+                        <p className="text-text-muted whitespace-nowrap shrink-0">x{detail.quantity} • {currency(detail.price)}</p>
                       </div>
                     ))}
                   </div>
@@ -1516,6 +1594,8 @@ export function SellerProductsPage() {
 }
 
 function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [listError, setListError] = useState('');
@@ -1525,6 +1605,21 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
   const [status, setStatus] = useState('CONFIRMED');
   const [statusFilter, setStatusFilter] = useState('');
   const [order, setOrder] = useState(null);
+
+  useEffect(() => {
+    const orderId = location.state?.selectedOrderId;
+    if (!orderId) return;
+    api.get(`/orders/${orderId}`)
+      .then((res) => {
+        const detail = res.data?.data;
+        if (detail) {
+          setOrder(detail);
+          setStatus(detail.status || 'CONFIRMED');
+        }
+      })
+      .catch(() => {});
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state?.selectedOrderId, location.pathname, navigate]);
 
   const loadOrders = async (nextPage = page) => {
     setLoading(true);
@@ -1672,25 +1767,35 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
           />
         ) : null}
         {!loading && meta.totalPages > 1 ? (
-          <div className="flex items-center justify-between mt-4 gap-3">
+          <div className="flex items-center justify-between mt-4 gap-3 flex-wrap">
             <p className="text-xs uppercase tracking-[0.12em] text-text-muted">
               Trang {page}/{meta.totalPages} • Tổng {meta.total} đơn
             </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => loadOrders(page - 1)}
-                className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
-              >
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button type="button" disabled={page <= 1} onClick={() => loadOrders(page - 1)} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
                 Trước
               </button>
-              <button
-                type="button"
-                disabled={page >= meta.totalPages}
-                onClick={() => loadOrders(page + 1)}
-                className="h-9 px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
-              >
+              {(() => {
+                const total = meta.totalPages;
+                const current = page;
+                const pages = [];
+                if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+                else {
+                  pages.push(1);
+                  if (current > 3) pages.push('…');
+                  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+                  if (current < total - 2) pages.push('…');
+                  if (total > 1) pages.push(total);
+                }
+                return pages.map((p, idx) =>
+                  p === '…' ? <span key={`ellipsis-seller-${idx}`} className="px-2 text-text-muted">…</span> : (
+                    <button key={p} type="button" onClick={() => loadOrders(p)} className={`h-9 min-w-[2.25rem] rounded-full border text-xs font-medium transition-colors ${p === current ? 'bg-primary text-white border-primary' : 'border-black/20 hover:bg-white/60'}`}>
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+              <button type="button" disabled={page >= meta.totalPages} onClick={() => loadOrders(page + 1)} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
                 Sau
               </button>
             </div>
@@ -1711,15 +1816,26 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
             <p><span className="text-text-muted">Số điện thoại:</span> {order.phone || '--'}</p>
             <p><span className="text-text-muted">Tổng tiền:</span> {currency(order.totalAmount)}</p>
             {order.details?.length ? (
-              <div className="rounded-xl border border-black/10 bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Sản phẩm trong đơn</p>
-                <div className="space-y-2">
-                  {order.details.map((detail) => (
-                    <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-3 text-sm">
-                      <p className="text-primary">{detail.product?.name || detail.productId}</p>
-                      <p className="text-text-muted">x{detail.quantity} • {currency(detail.price)}</p>
-                    </div>
-                  ))}
+              <div className="rounded-xl border border-black/10 bg-white/70 p-4">
+                <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Sản phẩm trong đơn</p>
+                <div className="space-y-3">
+                  {order.details.map((detail) => {
+                    const imgs = detail.product?.images;
+                    const imgUrl = Array.isArray(imgs) ? imgs[0] : imgs;
+                    return (
+                      <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-4 text-sm p-3 rounded-xl border border-black/5 hover:bg-black/[0.02]">
+                        <div className="flex items-center gap-4 min-w-0">
+                          {imgUrl ? (
+                            <img src={typeof imgUrl === 'string' ? imgUrl : imgUrl?.url} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 border border-black/5" />
+                          ) : (
+                            <div className="w-16 h-16 rounded-xl bg-black/5 flex items-center justify-center shrink-0 border border-black/5"><Package size={20} className="text-black/20" /></div>
+                          )}
+                          <p className="text-primary font-medium truncate">{detail.product?.name || detail.productId}</p>
+                        </div>
+                        <p className="text-text-muted whitespace-nowrap shrink-0">x{detail.quantity} • {currency(detail.price)}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
@@ -2671,7 +2787,17 @@ export function AdminDashboardPage() {
         </SectionCard>
 
         {/* Recent Orders */}
-        <SectionCard title="Đơn hàng gần nhất">
+        <SectionCard
+          title="Đơn hàng gần nhất"
+          action={
+            <Link
+              to="/staff/orders"
+              className="text-xs uppercase tracking-[0.12em] text-primary hover:text-accent"
+            >
+              Xem danh sách đơn hàng
+            </Link>
+          }
+        >
           {loading ? <EmptyState text="Đang tải..." /> : (
             <div className="space-y-2">
               {(!s?.recentOrders?.length) ? <EmptyState text="Chưa có đơn hàng." /> : s.recentOrders.map((order) => {
@@ -2689,7 +2815,8 @@ export function AdminDashboardPage() {
                     </div>
                     <Link
                       to="/staff/orders"
-                      title="Xem danh sách đơn hàng"
+                      state={{ selectedOrderId: order.id }}
+                      title="Xem chi tiết đơn này"
                       className="shrink-0 p-1.5 rounded-lg hover:bg-black/5 text-text-muted hover:text-primary transition-colors"
                     >
                       <Eye size={14} />
@@ -3524,24 +3651,34 @@ export function AdminWithdrawalsPage() {
 
             {/* Pagination */}
             {data.totalPages > 1 ? (
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-black/10">
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-black/10 flex-wrap gap-3">
                 <p className="text-xs text-text-muted">Trang {data.page} / {data.totalPages} &bull; {data.total} yêu cầu</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => load(data.page - 1)}
-                    disabled={data.page <= 1}
-                    className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
-                  >
-                    ← Trước
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button type="button" onClick={() => load(data.page - 1)} disabled={data.page <= 1} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
+                    Trước
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => load(data.page + 1)}
-                    disabled={data.page >= data.totalPages}
-                    className="h-9 px-4 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40"
-                  >
-                    Sau →
+                  {(() => {
+                    const total = data.totalPages;
+                    const current = data.page;
+                    const pages = [];
+                    if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+                    else {
+                      pages.push(1);
+                      if (current > 3) pages.push('…');
+                      for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+                      if (current < total - 2) pages.push('…');
+                      if (total > 1) pages.push(total);
+                    }
+                    return pages.map((p, idx) =>
+                      p === '…' ? <span key={`ellipsis-wd-${idx}`} className="px-2 text-text-muted">…</span> : (
+                        <button key={p} type="button" onClick={() => load(p)} className={`h-9 min-w-[2.25rem] rounded-full border text-xs font-medium transition-colors ${p === current ? 'bg-primary text-white border-primary' : 'border-black/20 hover:bg-white/60'}`}>
+                          {p}
+                        </button>
+                      )
+                    );
+                  })()}
+                  <button type="button" onClick={() => load(data.page + 1)} disabled={data.page >= data.totalPages} className="h-9 min-w-[2.25rem] px-3 rounded-full border border-black/20 text-xs uppercase tracking-[0.12em] disabled:opacity-40">
+                    Sau
                   </button>
                 </div>
               </div>
