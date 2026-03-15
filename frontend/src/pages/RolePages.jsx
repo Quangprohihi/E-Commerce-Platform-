@@ -264,11 +264,23 @@ export function BuyerDashboardPage() {
 
 /* ─── Order Status Stepper ─── */
 const ORDER_STEPS = [
-  { key: 'PENDING', label: 'Chờ xác nhận', icon: Clock3, color: '#F59E0B' },
-  { key: 'CONFIRMED', label: 'Đã xác nhận', icon: CreditCard, color: '#3B82F6' },
-  { key: 'SHIPPING', label: 'Đang giao', icon: Truck, color: '#8B5CF6' },
-  { key: 'DELIVERED', label: 'Đã nhận hàng', icon: CheckCircle2, color: '#10B981' },
+  { key: 'PENDING', label: 'Chờ xác nhận', icon: Clock3 },
+  { key: 'CONFIRMED', label: 'Đã xác nhận', icon: CreditCard },
+  { key: 'SHIPPING', label: 'Đang giao', icon: Truck },
+  { key: 'DELIVERED', label: 'Đã nhận hàng', icon: CheckCircle2 },
 ];
+
+const ORDER_STATUS_META = {
+  PENDING: { label: 'Chờ xác nhận', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+  CONFIRMED: { label: 'Đã xác nhận', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+  SHIPPING: { label: 'Đang giao', badge: 'bg-violet-50 text-violet-700 border-violet-200' },
+  DELIVERED: { label: 'Đã nhận hàng', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  CANCELLED: { label: 'Đã hủy', badge: 'bg-red-50 text-red-700 border-red-200' },
+};
+
+function getOrderStatusMeta(status) {
+  return ORDER_STATUS_META[status] || { label: status || '--', badge: 'bg-white text-primary border-black/10' };
+}
 
 function OrderStatusStepper({ status }) {
   const isCancelled = status === 'CANCELLED';
@@ -284,39 +296,35 @@ function OrderStatusStepper({ status }) {
   }
 
   return (
-    <div className="py-4">
-      <div className="flex items-center justify-between">
+    <div className="rounded-2xl border border-black/10 bg-white/70 p-4 md:p-5">
+      <div className="flex items-center justify-between gap-1 md:gap-2">
         {ORDER_STEPS.map((step, idx) => {
           const isDone = idx <= currentIdx;
           const isCurrent = idx === currentIdx;
           const StepIcon = step.icon;
           return (
-            <div key={step.key} className="flex items-center flex-1 last:flex-none">
-              {/* Step circle */}
-              <div className="flex flex-col items-center relative">
+            <div key={step.key} className="flex items-center flex-1 last:flex-none min-w-0">
+              <div className="flex flex-col items-center relative min-w-0">
                 <div
-                  className={`w-11 h-11 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
-                    isDone
-                      ? 'border-transparent shadow-lg'
-                      : 'border-black/10 bg-white/60'
-                  } ${isCurrent ? 'scale-110 ring-4 ring-opacity-20' : ''}`}
-                  style={isDone ? { background: step.color, boxShadow: `0 4px 14px ${step.color}40`, ...(isCurrent ? { ringColor: step.color } : {}) } : {}}
+                  className={`w-10 h-10 md:w-11 md:h-11 rounded-full flex items-center justify-center border transition-all duration-300 ${
+                    isDone ? 'bg-primary border-primary' : 'bg-white border-black/15'
+                  } ${isCurrent ? 'ring-2 ring-primary/15' : ''}`}
                 >
-                  <StepIcon size={18} className={isDone ? 'text-white' : 'text-black/25'} strokeWidth={2} />
+                  <StepIcon size={17} className={isDone ? 'text-white' : 'text-black/35'} strokeWidth={1.9} />
                 </div>
-                <span className={`text-[11px] mt-2 font-medium text-center whitespace-nowrap transition-colors duration-300 ${
-                  isDone ? 'text-black/80' : 'text-black/30'
-                }`}>{step.label}</span>
+                <span className={`text-[11px] md:text-xs mt-2 font-medium text-center whitespace-nowrap transition-colors duration-300 ${
+                  isDone || isCurrent ? 'text-primary' : 'text-text-muted/75'
+                }`}>
+                  {step.label}
+                </span>
               </div>
-              {/* Connector line */}
               {idx < ORDER_STEPS.length - 1 ? (
-                <div className="flex-1 mx-2 mt-[-18px]">
-                  <div className="h-[3px] rounded-full bg-black/5 relative overflow-hidden">
+                <div className="flex-1 mx-2 md:mx-3 mt-[-18px]">
+                  <div className="h-[2px] rounded-full bg-black/10 relative overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      className="h-full rounded-full transition-all duration-500 ease-out bg-primary"
                       style={{
                         width: idx < currentIdx ? '100%' : '0%',
-                        background: `linear-gradient(90deg, ${ORDER_STEPS[idx].color}, ${ORDER_STEPS[idx + 1].color})`,
                       }}
                     />
                   </div>
@@ -332,7 +340,6 @@ function OrderStatusStepper({ status }) {
 
 export function BuyerOrdersPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [page, setPage] = useState(1);
@@ -341,7 +348,7 @@ export function BuyerOrdersPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [cancelling, setCancelling] = useState(false);
-  const [simulating, setSimulating] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState(false);
 
   // Inline review state
   const [reviewForm, setReviewForm] = useState({ productId: '', rating: '0', comment: '' });
@@ -418,9 +425,12 @@ export function BuyerOrdersPage() {
     }
   };
 
-  const simulateNext = async () => {
-    if (!selectedOrder?.id) return;
-    setSimulating(true);
+  const confirmReceived = async (orderId = selectedOrder?.id) => {
+    if (!orderId) return;
+    const currentOrder = selectedOrder?.id === orderId ? selectedOrder : orders.find((item) => item.id === orderId);
+    if (currentOrder?.status !== 'SHIPPING') return;
+    if (!window.confirm('Bạn xác nhận đã nhận được hàng cho đơn này?')) return;
+    setProcessingStatus(true);
     setError('');
     setSuccessMsg('');
     try {
@@ -450,7 +460,7 @@ export function BuyerOrdersPage() {
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể xác nhận.');
     } finally {
-      setSimulating(false);
+      setProcessingStatus(false);
     }
   };
 
@@ -493,7 +503,7 @@ export function BuyerOrdersPage() {
   }, [selectedOrder, reviewedProductIds]);
 
   const canConfirmReceived = selectedOrder?.status === 'SHIPPING';
-  const nextStatusLabel = selectedOrder && !canConfirmReceived ? { PENDING: 'Xác nhận đơn', CONFIRMED: 'Bắt đầu giao' }[selectedOrder.status] : null;
+  const selectedStatusMeta = selectedOrder ? getOrderStatusMeta(selectedOrder.status) : null;
 
   return (
     <PageShell title="Đơn hàng của Buyer" subtitle="Theo dõi trạng thái và tổng giá trị đơn hàng của bạn.">
@@ -514,18 +524,37 @@ export function BuyerOrdersPage() {
           <DataTable
             columns={['Mã đơn', 'Ngày tạo', 'Trạng thái', 'Tổng tiền', 'Sản phẩm', 'Thao tác']}
             rows={orders.map((order) => {
-              const statusColors = { PENDING: 'bg-amber-50 text-amber-700', CONFIRMED: 'bg-blue-50 text-blue-700', SHIPPING: 'bg-violet-50 text-violet-700', DELIVERED: 'bg-emerald-50 text-emerald-700', CANCELLED: 'bg-red-50 text-red-600' };
+              const statusMeta = getOrderStatusMeta(order.status);
               return (
                 <tr key={order.id} className={`border-b border-black/5 cursor-pointer hover:bg-white/50 transition-colors ${selectedOrder?.id === order.id ? 'bg-primary/5' : ''}`} onClick={() => viewDetail(order)}>
                   <td className="py-3 pr-3 font-mono text-xs">{order.id.slice(0, 10)}...</td>
                   <td className="py-3 pr-3">{formatDate(order.createdAt)}</td>
-                  <td className="py-3 pr-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-medium ${statusColors[order.status] || ''}`}>{order.status}</span></td>
+                  <td className="py-3 pr-3">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border ${statusMeta.badge}`}>
+                      {statusMeta.label}
+                    </span>
+                  </td>
                   <td className="py-3 pr-3 font-medium">{currency(order.totalAmount)}</td>
                   <td className="py-3 pr-3">{order.details?.length || 0} SP</td>
                   <td className="py-3 pr-3">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); viewDetail(order); }} className="relative z-10 inline-flex items-center gap-1 text-xs uppercase tracking-[0.12em] text-primary hover:text-accent cursor-pointer py-1 px-2 rounded-lg hover:bg-primary/10 transition-colors">
-                      Xem <ChevronRight size={12} />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); viewDetail(order); }} className="relative z-10 inline-flex items-center gap-1 text-xs uppercase tracking-[0.12em] text-primary hover:text-accent cursor-pointer py-1 px-2 rounded-lg hover:bg-primary/10 transition-colors">
+                        Xem <ChevronRight size={12} />
+                      </button>
+                      {order.status === 'SHIPPING' ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmReceived(order.id);
+                          }}
+                          disabled={processingStatus}
+                          className="relative z-10 h-8 px-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-[11px] uppercase tracking-[0.1em] hover:bg-emerald-100 transition-colors disabled:opacity-60"
+                        >
+                          {processingStatus ? 'Đang xử lý...' : 'Đã nhận hàng'}
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );
@@ -583,52 +612,56 @@ export function BuyerOrdersPage() {
               {error ? <MessageBox type="error" text={error} /> : null}
               {successMsg ? <MessageBox type="success" text={successMsg} /> : null}
 
-              {/* Xác nhận đã nhận hàng (chỉ khi đơn đang giao) */}
-              {canConfirmReceived ? (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-primary/5 border border-emerald-200">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-primary">Đơn đang giao</p>
-                    <p className="text-xs text-text-muted mt-1">Khi bạn đã nhận được hàng, bấm xác nhận bên dưới. Sau 5 giờ không xác nhận, đơn sẽ tự động chuyển sang Đã giao.</p>
+              <div className="rounded-2xl border border-black/10 bg-white/70 p-4 md:p-5 space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted">Trạng thái hiện tại</p>
+                    {selectedStatusMeta ? (
+                      <span className={`mt-2 inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${selectedStatusMeta.badge}`}>
+                        {selectedStatusMeta.label}
+                      </span>
+                    ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={confirmReceived}
-                    disabled={simulating}
-                    className="h-10 px-5 rounded-xl bg-emerald-600 text-white text-xs uppercase tracking-[0.12em] hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center gap-2 shrink-0"
-                  >
-                    {simulating ? 'Đang xử lý...' : 'Xác nhận đã nhận hàng'}
-                  </button>
+                  <p className="text-xs text-text-muted">
+                    Cập nhật gần nhất: {formatDate(selectedOrder.updatedAt || selectedOrder.createdAt)}
+                  </p>
                 </div>
-              ) : null}
 
-              {/* Simulate (chỉ PENDING/CONFIRMED - dùng cho testing) */}
-              {nextStatusLabel ? (
-                <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/10">
-                  <div className="flex-1">
-                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted">Mô phỏng (Testing)</p>
-                    <p className="text-sm mt-1">Bấm để chuyển sang bước: <strong>{nextStatusLabel}</strong></p>
+                {canConfirmReceived ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl border border-emerald-200 bg-emerald-50/70">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary">Bạn đã nhận được hàng?</p>
+                      <p className="text-xs text-text-muted mt-1">Bấm xác nhận để hoàn tất đơn và mở đánh giá sản phẩm.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => confirmReceived(selectedOrder.id)}
+                      disabled={processingStatus}
+                      className="h-10 px-5 rounded-xl bg-emerald-600 text-white text-xs uppercase tracking-[0.12em] hover:bg-emerald-700 transition-all disabled:opacity-60 shrink-0"
+                    >
+                      {processingStatus ? 'Đang xử lý...' : 'Xác nhận đã nhận hàng'}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={simulateNext}
-                    disabled={simulating}
-                    className="h-10 px-5 rounded-xl bg-primary text-white text-xs uppercase tracking-[0.12em] hover:bg-primary/90 transition-all disabled:opacity-60 flex items-center gap-2"
-                  >
-                    {simulating ? 'Đang xử lý...' : (<>Tiếp theo <ChevronRight size={14} /></>)}
-                  </button>
-                </div>
-              ) : null}
+                ) : null}
+
+                {selectedOrder.status === 'PENDING' ? (
+                  <p className="text-sm text-text-muted">Đơn đang chờ shop xác nhận. Bạn có thể thanh toán hoặc hủy đơn ở phần bên dưới.</p>
+                ) : null}
+                {selectedOrder.status === 'CONFIRMED' ? (
+                  <p className="text-sm text-text-muted">Shop đã xác nhận đơn. Đơn sẽ sớm chuyển sang trạng thái đang giao.</p>
+                ) : null}
+              </div>
 
               {/* Order Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-black/10 bg-white/60 p-4 space-y-2 text-sm">
-                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Thông tin đơn</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-black/10 bg-white/75 p-5 space-y-2.5 text-sm">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Thông tin đơn hàng</p>
                   <p><span className="text-text-muted">Mã đơn:</span> <span className="font-mono text-xs">{selectedOrder.id}</span></p>
                   <p><span className="text-text-muted">Ngày tạo:</span> {formatDate(selectedOrder.createdAt)}</p>
                   <p><span className="text-text-muted">Thanh toán:</span> {selectedOrder.paymentMethod || 'COD'}</p>
                   <p><span className="text-text-muted">Tổng tiền:</span> <span className="font-medium text-primary">{currency(selectedOrder.totalAmount)}</span></p>
                 </div>
-                <div className="rounded-xl border border-black/10 bg-white/60 p-4 space-y-2 text-sm">
+                <div className="rounded-2xl border border-black/10 bg-white/75 p-5 space-y-2.5 text-sm">
                   <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Giao hàng</p>
                   <p><span className="text-text-muted">Địa chỉ:</span> {selectedOrder.shippingAddress || '--'}</p>
                   <p><span className="text-text-muted">SĐT:</span> {selectedOrder.phone || '--'}</p>
@@ -638,9 +671,9 @@ export function BuyerOrdersPage() {
 
               {/* Product list */}
               {selectedOrder.details?.length ? (
-                <div className="rounded-xl border border-black/10 bg-white/70 p-4">
+                <div className="rounded-2xl border border-black/10 bg-white/75 p-5">
                   <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Sản phẩm trong đơn</p>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {selectedOrder.details.map((detail) => (
                       <div key={detail.id || `${detail.productId}-${detail.quantity}`} className="flex items-center justify-between gap-4 text-sm p-3 rounded-xl border border-black/5 hover:bg-black/[0.02]">
                         <div className="flex items-center gap-4 min-w-0">
@@ -689,7 +722,7 @@ export function BuyerOrdersPage() {
 
               {/* ─── Inline Review Form (DELIVERED only) ─── */}
               {selectedOrder.status === 'DELIVERED' ? (
-                <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white p-5">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/55 p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <Star size={18} className="text-amber-500" />
                     <h3 className="font-serif text-lg text-primary">Đánh giá sản phẩm</h3>

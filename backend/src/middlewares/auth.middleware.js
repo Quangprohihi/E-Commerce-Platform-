@@ -2,22 +2,41 @@ const { verify } = require('../utils/jwt');
 const { sendUnauthorized } = require('../utils/response');
 const prisma = require('../config/prisma');
 
+function isDecodedTokenInvalid(decoded) {
+  return !decoded || !decoded.userId || typeof decoded.tokenVersion !== 'number';
+}
+
 async function authMiddleware(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return sendUnauthorized(res, 'Token không hợp lệ hoặc thiếu');
+      return sendUnauthorized(res, 'Token khong hop le hoac thieu');
     }
+
     const token = authHeader.slice(7);
     const decoded = verify(token);
-    if (!decoded || !decoded.userId) {
-      return sendUnauthorized(res, 'Token không hợp lệ hoặc đã hết hạn');
+    if (isDecodedTokenInvalid(decoded)) {
+      return sendUnauthorized(res, 'Token khong hop le hoac da het han');
     }
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, fullName: true, role: true, phone: true, avatar: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        phone: true,
+        avatar: true,
+        tokenVersion: true,
+      },
     });
-    if (!user) return sendUnauthorized(res, 'Người dùng không tồn tại');
+
+    if (!user) return sendUnauthorized(res, 'Nguoi dung khong ton tai');
+    if (user.tokenVersion !== decoded.tokenVersion) {
+      return sendUnauthorized(res, 'Phien dang nhap da het hieu luc. Vui long dang nhap lai');
+    }
+
     req.user = user;
     next();
   } catch (err) {
@@ -31,14 +50,28 @@ async function optionalAuth(req, res, next) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return next();
     }
+
     const token = authHeader.slice(7);
     const decoded = verify(token);
-    if (!decoded || !decoded.userId) return next();
+    if (isDecodedTokenInvalid(decoded)) return next();
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, fullName: true, role: true, phone: true, avatar: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        phone: true,
+        avatar: true,
+        tokenVersion: true,
+      },
     });
-    if (user) req.user = user;
+
+    if (user && user.tokenVersion === decoded.tokenVersion) {
+      req.user = user;
+    }
+
     next();
   } catch {
     next();
