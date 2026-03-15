@@ -2560,8 +2560,10 @@ export function AdminDashboardPage() {
     { label: 'Đã hủy', key: 'cancelled', color: '#F87171' },
   ];
 
-  const conversionRate = (s?.orderCounts?.total ?? 0) > 0
-    ? `${((s.orderCounts.delivered / s.orderCounts.total) * 100).toFixed(1)}%`
+  const totalOrders = s?.orderCounts?.total ?? 0;
+  const deliveredOrders = s?.orderCounts?.delivered ?? 0;
+  const conversionRate = totalOrders > 0
+    ? `${((deliveredOrders / totalOrders) * 100).toFixed(1)}%`
     : '—';
   const chartPeriodLabel = preset === 'today' ? 'Hôm nay'
     : preset === 'yesterday' ? 'Hôm qua'

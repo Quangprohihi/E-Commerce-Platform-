@@ -3,7 +3,7 @@ const { sendUnauthorized } = require('../utils/response');
 const prisma = require('../config/prisma');
 
 function isDecodedTokenInvalid(decoded) {
-  return !decoded || !decoded.userId || typeof decoded.tokenVersion !== 'number';
+  return !decoded || !decoded.userId;
 }
 
 async function authMiddleware(req, res, next) {
@@ -28,14 +28,10 @@ async function authMiddleware(req, res, next) {
         role: true,
         phone: true,
         avatar: true,
-        tokenVersion: true,
       },
     });
 
     if (!user) return sendUnauthorized(res, 'Nguoi dung khong ton tai');
-    if (user.tokenVersion !== decoded.tokenVersion) {
-      return sendUnauthorized(res, 'Phien dang nhap da het hieu luc. Vui long dang nhap lai');
-    }
 
     req.user = user;
     next();
@@ -64,11 +60,10 @@ async function optionalAuth(req, res, next) {
         role: true,
         phone: true,
         avatar: true,
-        tokenVersion: true,
       },
     });
 
-    if (user && user.tokenVersion === decoded.tokenVersion) {
+    if (user) {
       req.user = user;
     }
 
