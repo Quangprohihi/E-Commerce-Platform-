@@ -426,36 +426,21 @@ export function BuyerOrdersPage() {
   };
 
   const confirmReceived = async (orderId = selectedOrder?.id) => {
-    if (!orderId) return;
-    const currentOrder = selectedOrder?.id === orderId ? selectedOrder : orders.find((item) => item.id === orderId);
+    const id = orderId || selectedOrder?.id;
+    if (!id) return;
+    const currentOrder = selectedOrder?.id === id ? selectedOrder : orders.find((item) => item.id === id);
     if (currentOrder?.status !== 'SHIPPING') return;
     if (!window.confirm('Bạn xác nhận đã nhận được hàng cho đơn này?')) return;
     setProcessingStatus(true);
     setError('');
     setSuccessMsg('');
     try {
-      const res = await api.patch(`/orders/${selectedOrder.id}/simulate-next`);
-      const updated = res.data?.data;
-      setSelectedOrder(updated || selectedOrder);
-      setSuccessMsg(`Chuyển sang ${updated?.status || 'trạng thái mới'} thành công!`);
-      await loadOrders(page);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Không thể chuyển trạng thái.');
-    } finally {
-      setSimulating(false);
-    }
-  };
-
-  const confirmReceived = async () => {
-    if (!selectedOrder?.id || selectedOrder?.status !== 'SHIPPING') return;
-    setSimulating(true);
-    setError('');
-    setSuccessMsg('');
-    try {
-      await api.patch(`/orders/${selectedOrder.id}/status`, { status: 'DELIVERED' });
+      await api.patch(`/orders/${id}/status`, { status: 'DELIVERED' });
       setSuccessMsg('Đã xác nhận nhận hàng. Bạn có thể đánh giá sản phẩm bên dưới.');
-      const refreshed = await api.get(`/orders/${selectedOrder.id}`);
-      setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'DELIVERED' });
+      if (selectedOrder?.id === id) {
+        const refreshed = await api.get(`/orders/${id}`);
+        setSelectedOrder(refreshed.data?.data || { ...selectedOrder, status: 'DELIVERED' });
+      }
       await loadOrders(page);
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể xác nhận.');
