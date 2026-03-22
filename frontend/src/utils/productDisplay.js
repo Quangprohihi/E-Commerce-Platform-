@@ -8,5 +8,8 @@ export function formatDisplayProductName(name) {
   let s = name.trim();
   s = s.replace(/^kính\s+kính\s+/i, 'Kính ');
   s = s.replace(/^kính\s+gọng kính\s+/i, 'Gọng kính ');
-  return s;
+  // Bỏ hậu tố khu vực trong dữ liệu mẫu (hiển thị tỉnh/thành ở dòng shop, không ghép vào tên SP)
+  s = s.replace(/\s*[—–-]\s*(HN|HCM|TP\.?\s*HCM|TPHCM)\s*$/i, '');
+  s = s.replace(/\s*\(\s*(HN|HCM|TP\.?\s*HCM|TPHCM)\s*\)\s*$/i, '');
+  return s.trim();
 }

@@ -10,6 +10,15 @@ async function create(req, res, next) {
   }
 }
 
+async function shippingQuote(req, res, next) {
+  try {
+    const data = await orderService.shippingQuote(req.user.id, req.body);
+    return sendSuccess(res, 'Thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function myOrders(req, res, next) {
   try {
     const data = await orderService.getMyOrders(req.user.id, req.query);
@@ -83,4 +92,14 @@ async function simulateNext(req, res, next) {
   }
 }
 
-module.exports = { create, myOrders, manageOrders, getById, updateStatus, createVnpayUrl, createVnpayUrlForGroup, simulateNext };
+module.exports = {
+  create,
+  shippingQuote,
+  myOrders,
+  manageOrders,
+  getById,
+  updateStatus,
+  createVnpayUrl,
+  createVnpayUrlForGroup,
+  simulateNext,
+};

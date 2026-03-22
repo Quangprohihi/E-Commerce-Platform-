@@ -39,12 +39,45 @@ async function getSummary(reportType, filters = {}) {
     const deliveredWhere = { ...dateFilter, status: 'DELIVERED' };
     const [count, agg, deliveredAgg] = await Promise.all([
       prisma.order.count({ where }),
-      prisma.order.aggregate({ where, _sum: { totalAmount: true } }),
-      prisma.order.aggregate({ where: deliveredWhere, _sum: { totalAmount: true } }),
+      prisma.order.aggregate({
+        where,
+        _sum: {
+          totalAmount: true,
+          itemsAmount: true,
+          shippingFee: true,
+          shippingDiscount: true,
+          codFee: true,
+        },
+      }),
+      prisma.order.aggregate({
+        where: deliveredWhere,
+        _sum: {
+          totalAmount: true,
+          itemsAmount: true,
+          shippingFee: true,
+          shippingDiscount: true,
+          codFee: true,
+        },
+      }),
     ]);
     const totalAmount = agg._sum?.totalAmount != null ? Number(agg._sum.totalAmount) : 0;
+    const itemsAmountSum = agg._sum?.itemsAmount != null ? Number(agg._sum.itemsAmount) : 0;
+    const shippingNet =
+      Number(agg._sum?.shippingFee ?? 0) - Number(agg._sum?.shippingDiscount ?? 0);
+    const codFeeSum = agg._sum?.codFee != null ? Number(agg._sum.codFee) : 0;
     const deliveredAmount = deliveredAgg._sum?.totalAmount != null ? Number(deliveredAgg._sum.totalAmount) : 0;
-    return { count, totalAmount, deliveredAmount, reportType: 'sales' };
+    const deliveredItemsAmount =
+      deliveredAgg._sum?.itemsAmount != null ? Number(deliveredAgg._sum.itemsAmount) : 0;
+    return {
+      count,
+      totalAmount,
+      itemsAmountSum,
+      shippingNetCollected: shippingNet,
+      codFeeSum,
+      deliveredAmount,
+      deliveredItemsAmount,
+      reportType: 'sales',
+    };
   }
 
   if (reportType === 'users') {
@@ -70,11 +103,11 @@ async function getSummary(reportType, filters = {}) {
     const groups = await prisma.order.groupBy({
       by: ['sellerId'],
       where,
-      _sum: { totalAmount: true },
+      _sum: { itemsAmount: true },
       _count: { id: true },
     });
     const sellerCount = groups.length;
-    const totalRevenue = groups.reduce((sum, g) => sum + Number(g._sum?.totalAmount ?? 0), 0);
+    const totalRevenue = groups.reduce((sum, g) => sum + Number(g._sum?.itemsAmount ?? 0), 0);
     return { count: sellerCount, totalRevenue, reportType: 'sellerRevenue' };
   }
 
@@ -108,7 +141,7 @@ async function getSummary(reportType, filters = {}) {
     const to = parseDate(filters.toDate) || new Date();
     const orders = await prisma.order.findMany({
       where: { createdAt: { gte: from, lte: to } },
-      select: { createdAt: true, totalAmount: true, status: true },
+      select: { createdAt: true, totalAmount: true, itemsAmount: true, status: true },
     });
     const totalDays = Math.ceil((to - from) / 86400000) + 1;
     return { count: orders.length, totalDays, reportType: 'trend' };
@@ -152,6 +185,10 @@ async function getDetail(reportType, filters = {}, pagination = {}) {
       buyerName: o.buyer?.fullName,
       buyerEmail: o.buyer?.email,
       totalAmount: Number(o.totalAmount),
+      itemsAmount: Number(o.itemsAmount ?? o.totalAmount),
+      shippingFee: Number(o.shippingFee ?? 0),
+      shippingDiscount: Number(o.shippingDiscount ?? 0),
+      codFee: Number(o.codFee ?? 0),
       status: o.status,
       paymentMethod: o.paymentMethod,
       createdAt: o.createdAt,
@@ -263,9 +300,9 @@ async function getDetail(reportType, filters = {}, pagination = {}) {
     const groups = await prisma.order.groupBy({
       by: ['sellerId'],
       where,
-      _sum: { totalAmount: true },
+      _sum: { itemsAmount: true },
       _count: { id: true },
-      orderBy: { _sum: { totalAmount: 'desc' } },
+      orderBy: { _sum: { itemsAmount: 'desc' } },
     });
     const total = groups.length;
     const pageGroups = groups.slice(skip, skip + limit);
@@ -282,7 +319,7 @@ async function getDetail(reportType, filters = {}, pagination = {}) {
       sellerName: sellerMap.get(g.sellerId)?.fullName || '--',
       sellerEmail: sellerMap.get(g.sellerId)?.email || '--',
       orderCount: g._count.id,
-      revenue: Number(g._sum?.totalAmount ?? 0),
+      revenue: Number(g._sum?.itemsAmount ?? 0),
     }));
     return { items: rows, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
   }
@@ -322,7 +359,7 @@ async function getDetail(reportType, filters = {}, pagination = {}) {
     toEnd.setHours(23, 59, 59, 999);
     const orders = await prisma.order.findMany({
       where: { createdAt: { gte: from, lte: toEnd } },
-      select: { createdAt: true, totalAmount: true, status: true },
+      select: { createdAt: true, totalAmount: true, itemsAmount: true, status: true },
       orderBy: { createdAt: 'asc' },
     });
     // Group by date string (YYYY-MM-DD)
@@ -331,7 +368,7 @@ async function getDetail(reportType, filters = {}, pagination = {}) {
       const key = o.createdAt.toISOString().slice(0, 10);
       const cur = dayMap.get(key) || { date: key, orderCount: 0, revenue: 0 };
       cur.orderCount += 1;
-      if (o.status === 'DELIVERED') cur.revenue += Number(o.totalAmount);
+      if (o.status === 'DELIVERED') cur.revenue += Number(o.itemsAmount ?? o.totalAmount);
       dayMap.set(key, cur);
     }
     const allRows = Array.from(dayMap.values());
@@ -367,7 +404,11 @@ async function exportExcel(reportType, filters) {
       { header: 'STT', key: 'stt', width: 8 },
       { header: 'Người mua', key: 'buyerName', width: 20 },
       { header: 'Email', key: 'buyerEmail', width: 24 },
-      { header: 'Tổng tiền', key: 'totalAmount', width: 14 },
+      { header: 'Tổng thanh toán', key: 'totalAmount', width: 14 },
+      { header: 'Tiền hàng', key: 'itemsAmount', width: 12 },
+      { header: 'Phí ship', key: 'shippingFee', width: 10 },
+      { header: 'Giảm ship', key: 'shippingDiscount', width: 10 },
+      { header: 'Phí COD', key: 'codFee', width: 10 },
       { header: 'Trạng thái', key: 'status', width: 12 },
       { header: 'Thanh toán', key: 'paymentMethod', width: 12 },
       { header: 'Ngày tạo', key: 'createdAt', width: 22 },
@@ -456,7 +497,7 @@ async function exportPdf(reportType, filters) {
     doc.fontSize(16).text(`Báo cáo: ${reportType}`, { underline: true });
     doc.moveDown();
     const rowHeight = 18;
-    const colWidths = reportType === 'sales' ? [30, 70, 90, 60, 50, 50, 80]
+    const colWidths = reportType === 'sales' ? [28, 55, 70, 48, 40, 36, 36, 36, 44, 40, 72]
       : reportType === 'users' ? [30, 90, 70, 60, 40, 60, 40, 80]
       : reportType === 'products' ? [30, 90, 70, 50, 50, 40, 40, 50, 60, 80]
       : reportType === 'sellerRevenue' ? [30, 100, 130, 50, 100]
@@ -464,7 +505,7 @@ async function exportPdf(reportType, filters) {
       : reportType === 'trend' ? [30, 80, 60, 120]
       : [30, 30, 100, 60, 80, 70, 80];
     const headers = reportType === 'sales'
-      ? ['STT', 'Người mua', 'Email', 'Tổng tiền', 'Trạng thái', 'TT', 'Ngày tạo']
+      ? ['STT', 'Người mua', 'Email', 'Tổng TT', 'Hàng', 'Ship', 'Giảm', 'COD', 'TT', 'PT', 'Ngày']
       : reportType === 'users'
         ? ['STT', 'Email', 'Họ tên', 'Điện thoại', 'Role', 'Cửa hàng', 'KYC', 'Ngày tạo']
         : reportType === 'products'
@@ -485,7 +526,19 @@ async function exportPdf(reportType, filters) {
     doc.font('Helvetica');
     items.slice(0, 40).forEach((row, i) => {
       const vals = reportType === 'sales'
-        ? [i + 1, row.buyerName, row.buyerEmail, row.totalAmount, row.status, row.paymentMethod || '', row.createdAt]
+        ? [
+            i + 1,
+            row.buyerName,
+            row.buyerEmail,
+            row.totalAmount,
+            row.itemsAmount,
+            row.shippingFee,
+            row.shippingDiscount,
+            row.codFee,
+            row.status,
+            row.paymentMethod || '',
+            row.createdAt,
+          ]
         : reportType === 'users'
           ? [i + 1, row.email, row.fullName, row.phone, row.role, row.shopName || '', row.kycStatus || '', row.createdAt]
           : reportType === 'products'
@@ -525,7 +578,7 @@ async function getRevenueOverview3y() {
 
   const [totalRow, byYearRows, byQuarterRows, byMonthRows] = await Promise.all([
     prisma.$queryRaw(Prisma.sql`
-      SELECT COALESCE(SUM(total_amount), 0)::float AS total
+      SELECT COALESCE(SUM(items_amount), 0)::float AS total
       FROM orders
       WHERE status = 'DELIVERED'
         AND created_at >= ${fromDate}
@@ -533,7 +586,7 @@ async function getRevenueOverview3y() {
     `),
     prisma.$queryRaw(Prisma.sql`
       SELECT EXTRACT(YEAR FROM created_at)::int AS year,
-             COALESCE(SUM(total_amount), 0)::float AS revenue
+             COALESCE(SUM(items_amount), 0)::float AS revenue
       FROM orders
       WHERE status = 'DELIVERED'
         AND created_at >= ${fromDate}
@@ -544,7 +597,7 @@ async function getRevenueOverview3y() {
     prisma.$queryRaw(Prisma.sql`
       SELECT EXTRACT(YEAR FROM created_at)::int AS year,
              EXTRACT(QUARTER FROM created_at)::int AS quarter,
-             COALESCE(SUM(total_amount), 0)::float AS revenue
+             COALESCE(SUM(items_amount), 0)::float AS revenue
       FROM orders
       WHERE status = 'DELIVERED'
         AND created_at >= ${fromDate}
@@ -555,7 +608,7 @@ async function getRevenueOverview3y() {
     prisma.$queryRaw(Prisma.sql`
       SELECT EXTRACT(YEAR FROM created_at)::int AS year,
              EXTRACT(MONTH FROM created_at)::int AS month,
-             COALESCE(SUM(total_amount), 0)::float AS revenue
+             COALESCE(SUM(items_amount), 0)::float AS revenue
       FROM orders
       WHERE status = 'DELIVERED'
         AND created_at >= ${fromDate}

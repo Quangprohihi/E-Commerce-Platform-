@@ -1,7 +1,7 @@
-/** Jest config for backend test-cases (folder is gitignored). */
+/** Jest: committed tests under tests/; optional local test-cases (may be gitignored). */
 module.exports = {
   testEnvironment: 'node',
-  testMatch: ['**/test-cases/**/*.test.js'],
+  testMatch: ['**/tests/**/*.test.js'],
   testPathIgnorePatterns: ['/node_modules/'],
   verbose: true,
   forceExit: true,

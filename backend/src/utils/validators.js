@@ -13,7 +13,8 @@ function validateRegister(body) {
 }
 
 function validateLogin(body) {
-  const { email, password } = body || {};
+  const email = String(body?.email || '').trim();
+  const password = String(body?.password || '');
   if (!email || !password) return { ok: false, message: 'Thieu email hoac mat khau' };
   return { ok: true, data: { email, password } };
 }
@@ -59,6 +60,25 @@ function validateProfileUpdate(body) {
   };
 }
 
+function validateSellerWarehouseAddress(body) {
+  const rawP = body?.provinceId ?? body?.province_id;
+  const rawD = body?.districtId ?? body?.district_id;
+  const wardRaw = body?.wardCode ?? body?.ward_code;
+  const wardCode = String(wardRaw ?? '').trim();
+  const provinceId = parseInt(String(rawP ?? ''), 10);
+  const districtId = parseInt(String(rawD ?? ''), 10);
+  if (!Number.isFinite(provinceId) || provinceId <= 0) {
+    return { ok: false, message: 'Thieu hoac provinceId khong hop le' };
+  }
+  if (!Number.isFinite(districtId) || districtId <= 0) {
+    return { ok: false, message: 'Thieu hoac districtId khong hop le' };
+  }
+  if (!wardCode) {
+    return { ok: false, message: 'Thieu wardCode' };
+  }
+  return { ok: true, data: { provinceId, districtId, wardCode } };
+}
+
 module.exports = {
   isValidEmail,
   validateRegister,
@@ -66,4 +86,5 @@ module.exports = {
   validateForgotPassword,
   validateResetPassword,
   validateProfileUpdate,
+  validateSellerWarehouseAddress,
 };

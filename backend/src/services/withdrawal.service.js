@@ -12,14 +12,14 @@ async function getBalance(sellerId) {
         status: 'DELIVERED',
         paymentMethod: { not: null },
       },
-      _sum: { totalAmount: true },
+      _sum: { itemsAmount: true },
     }),
     prisma.withdrawalRequest.aggregate({
       where: { sellerId, status: 'APPROVED' },
       _sum: { amount: true },
     }),
   ]);
-  const income = Number(incomeAgg._sum?.totalAmount ?? 0);
+  const income = Number(incomeAgg._sum?.itemsAmount ?? 0);
   const withdrawn = Number(withdrawnAgg._sum?.amount ?? 0);
   const balance = Math.max(0, income - withdrawn);
   return { balance, income, withdrawn };
@@ -148,7 +148,7 @@ async function getById(id, userRole) {
       where: { sellerId: req.sellerId, status: 'DELIVERED' },
       orderBy: { createdAt: 'desc' },
       take: 10,
-      select: { id: true, totalAmount: true, createdAt: true },
+      select: { id: true, totalAmount: true, itemsAmount: true, createdAt: true },
     }),
   ]);
 
@@ -159,6 +159,7 @@ async function getById(id, userRole) {
     recentDeliveredOrders: recentDelivered.map((o) => ({
       id: o.id,
       totalAmount: Number(o.totalAmount),
+      itemsAmount: Number(o.itemsAmount ?? o.totalAmount),
       createdAt: o.createdAt,
     })),
   };

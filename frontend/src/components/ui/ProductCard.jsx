@@ -58,7 +58,7 @@ export default function ProductCard({ product, onAddToCompare }) {
       transition={{ duration: 0.36 }}
     >
       <Link to={`/products/${product.slug}`} className="block space-y-3">
-        <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-transparent">
+        <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-stone-100">
           <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5 items-start max-w-[calc(100%-1.5rem)]">
             {hasSale ? (
               <span className="inline-flex items-center px-2.5 py-1 text-[11px] tracking-[0.12em] uppercase bg-primary text-white rounded-full">
@@ -79,7 +79,7 @@ export default function ProductCard({ product, onAddToCompare }) {
           <motion.img
             src={imageUrl}
             alt={displayName}
-            className="w-full h-full object-contain object-center will-change-transform mix-blend-multiply"
+            className="w-full h-full object-contain object-center will-change-transform"
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           />
@@ -109,12 +109,16 @@ export default function ProductCard({ product, onAddToCompare }) {
           <h3 className="font-medium text-primary text-sm md:text-[15px] tracking-tight leading-snug truncate">
             {displayName}
           </h3>
-          <div className="flex items-center gap-1.5 text-xs text-[#8f8a83]">
-            <span className="truncate max-w-35">
+          <div className="flex items-center gap-1.5 text-xs text-[#8f8a83] min-w-0">
+            <span className="truncate min-w-0">
               {product.seller?.shopName || product.seller?.fullName || 'Kính Tốt'}
             </span>
-            <span>•</span>
-            <span className="truncate">{product.seller?.location || 'TP.HCM'}</span>
+            {product.seller?.location ? (
+              <>
+                <span className="shrink-0">•</span>
+                <span className="truncate min-w-0">{product.seller.location}</span>
+              </>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <p className="text-accent font-medium text-[15px]">

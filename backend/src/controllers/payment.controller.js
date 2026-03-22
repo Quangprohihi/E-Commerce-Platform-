@@ -32,14 +32,14 @@ async function vnpayReturn(req, res, next) {
     const txnRef = verify.vnp_TxnRef || vnpQuery.vnp_TxnRef;
 
     if (verify.isSuccess && txnRef) {
-      const receivedAmount = Number(verify.vnp_Amount ?? vnpQuery.vnp_Amount ?? 0);
+      const receivedAmount = verify.vnp_Amount ?? vnpQuery.vnp_Amount ?? 0;
       const vnpTransactionNo = verify.vnp_TransactionNo ?? vnpQuery.vnp_TransactionNo ?? null;
 
       if (orderGroupId) {
         const orders = await prisma.order.findMany({ where: { orderGroupId, status: 'PENDING' } });
         if (orders.length > 0) {
           const expectedTotal = orders.reduce((s, o) => s + Number(o.totalAmount), 0);
-          if (!Number.isNaN(receivedAmount) && Math.abs(receivedAmount - expectedTotal) <= 1) {
+          if (vnpayService.amountsMatchVnd(expectedTotal, receivedAmount)) {
             await prisma.order.updateMany({
               where: { orderGroupId },
               data: { status: 'CONFIRMED', vnpTransactionNo },
@@ -52,7 +52,7 @@ async function vnpayReturn(req, res, next) {
         const order = await prisma.order.findUnique({ where: { id: txnRef } });
         if (order && order.status === 'PENDING') {
           const expectedAmount = Number(order.totalAmount);
-          if (!Number.isNaN(receivedAmount) && !Number.isNaN(expectedAmount) && Math.abs(receivedAmount - expectedAmount) <= 1) {
+          if (vnpayService.amountsMatchVnd(expectedAmount, receivedAmount)) {
             await prisma.order.update({
               where: { id: txnRef },
               data: { status: 'CONFIRMED', vnpTransactionNo },
@@ -83,14 +83,14 @@ async function vnpayIpn(req, res, next) {
     const txnRef = verify.vnp_TxnRef || req.query.vnp_TxnRef;
     if (!txnRef) return res.json(IpnOrderNotFound);
 
-    const receivedAmount = Number(verify.vnp_Amount);
+    const receivedAmount = verify.vnp_Amount;
     const vnpTransactionNo = verify.vnp_TransactionNo || req.query.vnp_TransactionNo || null;
 
     let order = await prisma.order.findUnique({ where: { id: txnRef } });
     if (order) {
       if (order.status !== 'PENDING') return res.json(InpOrderAlreadyConfirmed);
       const expectedAmount = Number(order.totalAmount);
-      if (Number.isNaN(receivedAmount) || Math.abs(receivedAmount - expectedAmount) > 1) {
+      if (!vnpayService.amountsMatchVnd(expectedAmount, receivedAmount)) {
         return res.json(IpnInvalidAmount);
       }
       await prisma.order.update({
@@ -103,7 +103,7 @@ async function vnpayIpn(req, res, next) {
     const orders = await prisma.order.findMany({ where: { orderGroupId: txnRef, status: 'PENDING' } });
     if (orders.length === 0) return res.json(IpnOrderNotFound);
     const expectedTotal = orders.reduce((s, o) => s + Number(o.totalAmount), 0);
-    if (Number.isNaN(receivedAmount) || Math.abs(receivedAmount - expectedTotal) > 1) {
+    if (!vnpayService.amountsMatchVnd(expectedTotal, receivedAmount)) {
       return res.json(IpnInvalidAmount);
     }
     await prisma.order.updateMany({
