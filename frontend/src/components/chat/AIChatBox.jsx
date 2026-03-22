@@ -2,8 +2,46 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Send, MessageCircle, Sparkles, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '../ui/ProductCard';
-import { GlassesSkeleton } from '../ui/SkeletonLoader';
 import api from '../../services/api';
+
+/** Chỉ báo khi AI đang xử lý — rõ ràng hơn skeleton kính. */
+function AIThinkingBubble() {
+  return (
+    <div
+      className="glass rounded-2xl rounded-bl-md px-5 py-4 flex flex-col gap-3 max-w-[min(100%,20rem)] border border-primary/10"
+      role="status"
+      aria-live="polite"
+      aria-label="AI Stylist đang trả lời, vui lòng chờ"
+    >
+      <div className="flex items-center gap-2 text-sm font-medium text-primary">
+        <motion.span
+          className="inline-flex p-1 rounded-full bg-primary/10 text-primary"
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Sparkles size={16} strokeWidth={2} />
+        </motion.span>
+        <span>AI Stylist đang trả lời…</span>
+      </div>
+      <div className="flex items-center gap-1.5 pl-1" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="w-2 h-2 rounded-full bg-primary/55"
+            animate={{ y: [0, -5, 0], opacity: [0.45, 1, 0.45] }}
+            transition={{
+              duration: 0.55,
+              repeat: Infinity,
+              delay: i * 0.12,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
+      <p className="text-[11px] text-text-muted leading-snug">Vui lòng đợi vài giây.</p>
+    </div>
+  );
+}
 
 function buildOrderSummaryFromProducts(suggestedProducts) {
   if (!suggestedProducts?.length) return { items: [], total: 0 };
@@ -101,6 +139,7 @@ export default function AIChatBox({ open, onClose }) {
         data.orderSummary?.items?.length != null
           ? data.orderSummary
           : buildOrderSummaryFromProducts(suggestedProducts);
+      const meta = data.meta && typeof data.meta === 'object' ? data.meta : {};
       setMessages((prev) => [
         ...prev,
         {
@@ -108,6 +147,7 @@ export default function AIChatBox({ open, onClose }) {
           content: data.answer || 'Xin lỗi, tôi chưa thể trả lời.',
           suggestedProducts,
           orderSummary,
+          meta,
         },
       ]);
     } catch {
@@ -211,8 +251,8 @@ export default function AIChatBox({ open, onClose }) {
                 {msg.role === 'AI' && msg.suggestedProducts?.length > 0 && (
                   <div className="mt-4 w-full space-y-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-[#7f786f] mb-3">Gợi ý sản phẩm</p>
-                    <div className="overflow-x-auto scrollbar-hide">
-                      <div className="flex gap-4 min-w-max pr-2">
+                    <div className="overflow-x-auto scrollbar-hide scroll-pl-4 pl-1 sm:pl-2">
+                      <div className="flex gap-4 min-w-max pr-4">
                         {msg.suggestedProducts.map((p) => (
                           <div key={p.id} className="w-65 shrink-0">
                             <ProductCard product={p} />
@@ -241,6 +281,13 @@ export default function AIChatBox({ open, onClose }) {
                               </li>
                             ))}
                           </ul>
+                          {msg.meta?.maxBudgetVnd > 0 && Number(summary.total) > msg.meta.maxBudgetVnd ? (
+                            <p className="text-[11px] text-text-muted leading-snug mb-2">
+                              Mỗi sản phẩm gợi ý có giá thanh toán trong ngân sách tối đa{' '}
+                              {Number(msg.meta.maxBudgetVnd).toLocaleString('vi-VN')} ₫. Tổng dưới đây là nếu thêm hết vào giỏ
+                              (nhiều món) — có thể cao hơn một lần mua một món.
+                            </p>
+                          ) : null}
                           <div className="flex items-center justify-between border-t border-black/10 pt-3">
                             <span className="font-medium text-primary">Tổng cộng: {Number(summary.total).toLocaleString('vi-VN')} ₫</span>
                             <button
@@ -264,9 +311,7 @@ export default function AIChatBox({ open, onClose }) {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="glass rounded-2xl rounded-bl-md px-4 py-3">
-                  <GlassesSkeleton />
-                </div>
+                <AIThinkingBubble />
               </div>
             )}
             <div ref={messagesEndRef} />
