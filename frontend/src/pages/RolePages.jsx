@@ -2912,7 +2912,29 @@ export function AdminReportsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [message, setMessage] = useState('');
 
+  const [revenueOverview, setRevenueOverview] = useState(null);
+  const [loadingRevenueOverview, setLoadingRevenueOverview] = useState(false);
+  const [revenueOverviewError, setRevenueOverviewError] = useState('');
+
   const filters = { fromDate: fromDate || undefined, toDate: toDate || undefined, status: status || undefined };
+
+  const loadRevenueOverview = async () => {
+    setLoadingRevenueOverview(true);
+    setRevenueOverviewError('');
+    try {
+      const res = await api.get('/admin/reports/revenue-overview');
+      setRevenueOverview(res.data?.data ?? null);
+    } catch (err) {
+      setRevenueOverviewError(err.response?.data?.message || 'Không tải được tổng quan doanh thu 3 năm.');
+      setRevenueOverview(null);
+    } finally {
+      setLoadingRevenueOverview(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRevenueOverview();
+  }, []);
 
   const loadSummary = async () => {
     setLoadingSummary(true);
@@ -2999,8 +3021,121 @@ export function AdminReportsPage() {
     }
   };
 
+  const quarterComparison = useMemo(() => {
+    if (!revenueOverview?.byQuarter?.length) return [];
+    return revenueOverview.byQuarter.map((q, i) => {
+      const prev = revenueOverview.byQuarter[i - 1];
+      const changePct = prev && prev.revenue > 0
+        ? (((q.revenue - prev.revenue) / prev.revenue) * 100).toFixed(1)
+        : null;
+      return { label: `${q.year} Q${q.quarter}`, revenue: q.revenue, changePct };
+    });
+  }, [revenueOverview]);
+
+  const monthComparison = useMemo(() => {
+    if (!revenueOverview?.byMonth?.length) return [];
+    return revenueOverview.byMonth.map((m, i) => {
+      const prev = revenueOverview.byMonth[i - 1];
+      const changePct = prev && prev.revenue > 0
+        ? (((m.revenue - prev.revenue) / prev.revenue) * 100).toFixed(1)
+        : null;
+      const label = `${String(m.month).padStart(2, '0')}/${m.year}`;
+      return { label, revenue: m.revenue, changePct };
+    });
+  }, [revenueOverview]);
+
   return (
     <PageShell title="Reports" subtitle="Báo cáo tổng hợp và xuất file PDF/Excel.">
+      <div className="glass rounded-2xl p-5 mb-6">
+        <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Tổng quan doanh thu 3 năm</h2>
+        <p className="text-xs text-text-muted mb-4">Dữ liệu 3 năm gần nhất (chỉ đơn đã giao).</p>
+        {loadingRevenueOverview && <p className="text-text-muted text-sm">Đang tải...</p>}
+        {revenueOverviewError && <MessageBox type="error" text={revenueOverviewError} />}
+        {!loadingRevenueOverview && revenueOverview && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+              <StatCard
+                label="Doanh thu tổng 3 năm (đ)"
+                value={new Intl.NumberFormat('vi-VN').format(revenueOverview.totalRevenue ?? 0)}
+                accentColor="#10B981"
+              />
+              {revenueOverview.byYear?.map((y) => (
+                <StatCard
+                  key={y.year}
+                  label={`Năm ${y.year}`}
+                  value={new Intl.NumberFormat('vi-VN').format(y.revenue ?? 0)}
+                  accentColor="#0ea5e9"
+                />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-medium text-[#7f786f] mb-3">So sánh theo quý</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-black/15">
+                        <th className="text-left py-2 pr-3 font-medium">Quý</th>
+                        <th className="text-right py-2 pr-3 font-medium">Doanh thu</th>
+                        <th className="text-right py-2 pr-3 font-medium">So với quý trước</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quarterComparison.map((row) => (
+                        <tr key={row.label} className="border-b border-black/5">
+                          <td className="py-2 pr-3 font-mono">{row.label}</td>
+                          <td className="py-2 pr-3 text-right font-medium text-emerald-700">{currency(row.revenue)}</td>
+                          <td className="py-2 pr-3 text-right">
+                            {row.changePct != null ? (
+                              <span className={Number(row.changePct) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                {Number(row.changePct) >= 0 ? '+' : ''}{row.changePct}%
+                              </span>
+                            ) : (
+                              <span className="text-text-muted">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-[#7f786f] mb-3">So sánh theo tháng</h3>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-black/15">
+                        <th className="text-left py-2 pr-3 font-medium">Tháng</th>
+                        <th className="text-right py-2 pr-3 font-medium">Doanh thu</th>
+                        <th className="text-right py-2 pr-3 font-medium">So với tháng trước</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthComparison.map((row) => (
+                        <tr key={row.label} className="border-b border-black/5">
+                          <td className="py-2 pr-3 font-mono">{row.label}</td>
+                          <td className="py-2 pr-3 text-right font-medium text-emerald-700">{currency(row.revenue)}</td>
+                          <td className="py-2 pr-3 text-right">
+                            {row.changePct != null ? (
+                              <span className={Number(row.changePct) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                {Number(row.changePct) >= 0 ? '+' : ''}{row.changePct}%
+                              </span>
+                            ) : (
+                              <span className="text-text-muted">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="glass rounded-2xl p-5 mb-6">
         <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-[#7f786f] mb-4">Chọn loại báo cáo</h2>
         <div className="flex flex-wrap gap-2">

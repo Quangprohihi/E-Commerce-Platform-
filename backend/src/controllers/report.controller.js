@@ -61,4 +61,13 @@ async function exportPdf(req, res, next) {
   }
 }
 
-module.exports = { getSummary, getDetail, exportExcel, exportPdf };
+async function getRevenueOverview(req, res, next) {
+  try {
+    const data = await reportService.getRevenueOverview3y();
+    return sendSuccess(res, 'Thành công', data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getSummary, getDetail, exportExcel, exportPdf, getRevenueOverview };

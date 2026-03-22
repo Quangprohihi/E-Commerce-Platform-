@@ -18,6 +18,7 @@ router.delete('/users/:id', adminController.deleteUserById);
 
 router.get('/reports/summary', reportController.getSummary);
 router.get('/reports/detail', reportController.getDetail);
+router.get('/reports/revenue-overview', reportController.getRevenueOverview);
 router.get('/reports/export/excel', reportController.exportExcel);
 router.get('/reports/export/pdf', reportController.exportPdf);
 

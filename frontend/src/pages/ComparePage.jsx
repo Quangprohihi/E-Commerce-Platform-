@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Scale, ShoppingBag, ArrowLeft, X, Trash2 } from 'lucide-react';
 import api from '../services/api';
+import { formatDisplayProductName } from '../utils/productDisplay';
+import { FormattedCompareText } from '../utils/formatAiRichText';
 
 const COMPARE_IDS_KEY = 'compareIds';
 
@@ -76,7 +78,7 @@ export default function ComparePage() {
       } else {
         normalized.push({
           id: product.id,
-          name: product.name,
+          name: formatDisplayProductName(product.name),
           slug: product.slug,
           images: product.images,
           price: Number(product.price),
@@ -201,7 +203,9 @@ export default function ComparePage() {
 
         {summary && (
           <div className="glass rounded-2xl p-5 mb-8">
-            <p className="text-primary leading-relaxed">{summary}</p>
+            <div className="text-primary leading-relaxed">
+              <FormattedCompareText text={summary} />
+            </div>
           </div>
         )}
 
@@ -212,6 +216,7 @@ export default function ComparePage() {
             const imageUrl = images[0] || 'https://placehold.co/800x600?text=Kinh+Tot';
             const price = product.salePrice ?? product.price;
             const displayPrice = typeof price === 'number' ? price : Number(price);
+            const displayName = formatDisplayProductName(product.name);
 
             return (
               <div key={product.id} className="glass rounded-2xl overflow-hidden relative">
@@ -226,23 +231,29 @@ export default function ComparePage() {
                 </button>
                 <Link to={`/products/${product.slug}`} className="block p-4 border-b border-black/10">
                   <div className="aspect-4/3 rounded-xl bg-[#efebe5] overflow-hidden mb-3">
-                    <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                    <img src={imageUrl} alt={displayName} className="w-full h-full object-cover" />
                   </div>
-                  <h3 className="font-medium text-primary truncate">{product.name}</h3>
+                  <h3 className="font-medium text-primary truncate">{displayName}</h3>
                   <p className="text-accent font-medium mt-1">{new Intl.NumberFormat('vi-VN').format(displayPrice)} đ</p>
                 </Link>
                 <div className="p-4 space-y-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.15em] text-[#7f786f] mb-1">Ưu điểm</p>
-                    <p className="text-sm text-primary">{pc.pros || '—'}</p>
+                    <div className="text-sm text-primary">
+                      <FormattedCompareText text={pc.pros || '—'} />
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.15em] text-[#7f786f] mb-1">Nhược điểm</p>
-                    <p className="text-sm text-primary">{pc.cons || '—'}</p>
+                    <div className="text-sm text-primary">
+                      <FormattedCompareText text={pc.cons || '—'} />
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.15em] text-[#7f786f] mb-1">Phù hợp với</p>
-                    <p className="text-sm text-primary">{pc.bestFor || '—'}</p>
+                    <div className="text-sm text-primary">
+                      <FormattedCompareText text={pc.bestFor || '—'} />
+                    </div>
                   </div>
                   <div className="flex gap-2 pt-2">
                     <Link

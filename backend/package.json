@@ -8,7 +8,8 @@
     "dev": "nodemon index.js",
     "seed": "node prisma/seed.js",
     "increase-stock": "node scripts/increase-stock.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --config jest.config.js",
+    "test:report": "jest --config jest.config.js --json --outputFile=test-cases/test-results.json --silent && node scripts/generate-test-report.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -34,7 +35,9 @@
     "vnpay": "^2.4.4"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.1.14",
-    "prisma": "^7.4.1"
+    "prisma": "^7.4.1",
+    "supertest": "^7.2.2"
   }
 }

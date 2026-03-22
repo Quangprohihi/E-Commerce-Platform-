@@ -509,12 +509,88 @@ async function exportPdf(reportType, filters) {
   });
 }
 
+/**
+ * Tổng quan doanh thu cố định 3 năm gần nhất (chỉ đơn DELIVERED).
+ * Dùng raw query để aggregate theo năm/quý/tháng, tránh load toàn bộ orders.
+ * @returns {{ totalRevenue: number, byYear: { year: number, revenue: number }[], byQuarter: { year: number, quarter: number, revenue: number }[], byMonth: { year: number, month: number, revenue: number }[] }}
+ */
+async function getRevenueOverview3y() {
+  const toDate = new Date();
+  toDate.setHours(23, 59, 59, 999);
+  const fromDate = new Date(toDate);
+  fromDate.setFullYear(fromDate.getFullYear() - 3);
+  fromDate.setHours(0, 0, 0, 0);
+
+  const { Prisma } = require('@prisma/client');
+
+  const [totalRow, byYearRows, byQuarterRows, byMonthRows] = await Promise.all([
+    prisma.$queryRaw(Prisma.sql`
+      SELECT COALESCE(SUM(total_amount), 0)::float AS total
+      FROM orders
+      WHERE status = 'DELIVERED'
+        AND created_at >= ${fromDate}
+        AND created_at <= ${toDate}
+    `),
+    prisma.$queryRaw(Prisma.sql`
+      SELECT EXTRACT(YEAR FROM created_at)::int AS year,
+             COALESCE(SUM(total_amount), 0)::float AS revenue
+      FROM orders
+      WHERE status = 'DELIVERED'
+        AND created_at >= ${fromDate}
+        AND created_at <= ${toDate}
+      GROUP BY EXTRACT(YEAR FROM created_at)
+      ORDER BY year ASC
+    `),
+    prisma.$queryRaw(Prisma.sql`
+      SELECT EXTRACT(YEAR FROM created_at)::int AS year,
+             EXTRACT(QUARTER FROM created_at)::int AS quarter,
+             COALESCE(SUM(total_amount), 0)::float AS revenue
+      FROM orders
+      WHERE status = 'DELIVERED'
+        AND created_at >= ${fromDate}
+        AND created_at <= ${toDate}
+      GROUP BY EXTRACT(YEAR FROM created_at), EXTRACT(QUARTER FROM created_at)
+      ORDER BY year ASC, quarter ASC
+    `),
+    prisma.$queryRaw(Prisma.sql`
+      SELECT EXTRACT(YEAR FROM created_at)::int AS year,
+             EXTRACT(MONTH FROM created_at)::int AS month,
+             COALESCE(SUM(total_amount), 0)::float AS revenue
+      FROM orders
+      WHERE status = 'DELIVERED'
+        AND created_at >= ${fromDate}
+        AND created_at <= ${toDate}
+      GROUP BY EXTRACT(YEAR FROM created_at), EXTRACT(MONTH FROM created_at)
+      ORDER BY year ASC, month ASC
+    `),
+  ]);
+
+  const totalRevenue = Number(totalRow?.[0]?.total ?? 0);
+  const byYear = (byYearRows || []).map((r) => ({
+    year: Number(r.year),
+    revenue: Number(r.revenue ?? 0),
+  }));
+  const byQuarter = (byQuarterRows || []).map((r) => ({
+    year: Number(r.year),
+    quarter: Number(r.quarter),
+    revenue: Number(r.revenue ?? 0),
+  }));
+  const byMonth = (byMonthRows || []).map((r) => ({
+    year: Number(r.year),
+    month: Number(r.month),
+    revenue: Number(r.revenue ?? 0),
+  }));
+
+  return { totalRevenue, byYear, byQuarter, byMonth };
+}
+
 module.exports = {
   getSummary,
   getDetail,
   getDetailForExport,
   exportExcel,
   exportPdf,
+  getRevenueOverview3y,
   REPORT_TYPES,
   buildDateFilter,
   parseDate,
