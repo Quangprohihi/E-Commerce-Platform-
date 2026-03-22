@@ -1,14 +1,47 @@
 const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const vnpayService = require('./vnpay.service');
+const shippingConfig = require('../config/shipping.config');
+const { calculateSellerOrderShipping, roundMoneyVnd } = require('./shipping/shippingCalculator');
 
-async function create(buyerId, body) {
-  const { items, shippingAddress, phone, note } = body;
+const PAYMENT_VNPAY = 'VNPAY';
+const PAYMENT_COD = 'COD';
+
+function assertBuyerDistrictWardIfRequired(district, ward) {
+  if (!shippingConfig.requireBuyerDistrictWard) return;
+  const d = district?.trim?.() || '';
+  const w = ward?.trim?.() || '';
+  if (!d || !w) {
+    throw Object.assign(
+      new Error('Thiếu mã quận/huyện hoặc phường/xã giao hàng (buyerDistrictCode, buyerWardCode).'),
+      { statusCode: 400 }
+    );
+  }
+}
+
+function normalizePaymentMethod(raw) {
+  const u = String(raw || PAYMENT_VNPAY).toUpperCase();
+  if (u === PAYMENT_COD) return PAYMENT_COD;
+  return PAYMENT_VNPAY;
+}
+
+/** Map GHN ids từ FE (alias) vào cột Order hiện có. */
+function normalizeBuyerAddress(body) {
+  const p = body.buyerProvinceId ?? body.buyerProvinceCode;
+  const d = body.buyerDistrictId ?? body.buyerDistrictCode;
+  const w = body.buyerWardCode;
+  const pc = p != null && String(p).trim() !== '' ? String(p).trim() : null;
+  const dc = d != null && String(d).trim() !== '' ? String(d).trim() : null;
+  const wc = w != null && String(w).trim() !== '' ? String(w).trim() : null;
+  return { buyerProvinceCode: pc, buyerDistrictCode: dc, buyerWardCode: wc };
+}
+
+/**
+ * Load products, group by seller, validate stock. Used by quote + create.
+ */
+async function loadAndGroupItemsForCheckout(items) {
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw Object.assign(new Error('Danh sách sản phẩm không hợp lệ'), { statusCode: 400 });
-  }
-  if (!shippingAddress || !phone) {
-    throw Object.assign(new Error('Thiếu địa chỉ giao hàng hoặc số điện thoại'), { statusCode: 400 });
   }
 
   const productIds = items.map((i) => i.productId);
@@ -20,14 +53,15 @@ async function create(buyerId, body) {
   }
 
   const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
-
-  // Nhóm theo sellerId: { sellerId -> [{ productId, quantity, price, product }] }
   const bySeller = new Map();
+
   for (const it of items) {
     const product = productMap[it.productId];
     if (!product) throw Object.assign(new Error(`Sản phẩm ${it.productId} không tồn tại`), { statusCode: 400 });
     const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
-    if (product.stock < qty) throw Object.assign(new Error(`Sản phẩm ${product.name} không đủ tồn kho`), { statusCode: 400 });
+    if (product.stock < qty) {
+      throw Object.assign(new Error(`Sản phẩm ${product.name} không đủ tồn kho`), { statusCode: 400 });
+    }
     const price = Number(product.salePrice ?? product.price);
     const sellerId = product.sellerId;
     if (!bySeller.has(sellerId)) bySeller.set(sellerId, []);
@@ -40,27 +74,111 @@ async function create(buyerId, body) {
     decrements[it.productId] = (decrements[it.productId] || 0) + qty;
   }
 
+  return { productMap, bySeller, decrements };
+}
+
+/**
+ * @param {Map} bySeller
+ * @param {{ buyerProvinceCode?: string|null, buyerDistrictCode?: string|null, buyerWardCode?: string|null }} buyerAddress
+ * @param {string} paymentMethod
+ */
+async function computeShippingLines(bySeller, buyerAddress, paymentMethod) {
+  const sellerIds = [...bySeller.keys()];
+  const profiles = await prisma.sellerProfile.findMany({
+    where: { userId: { in: sellerIds } },
+    select: {
+      userId: true,
+      sellerProvinceId: true,
+      sellerDistrictId: true,
+      sellerWardCode: true,
+    },
+  });
+  const profileMap = Object.fromEntries(profiles.map((p) => [p.userId, p]));
+
+  const { buyerProvinceCode, buyerDistrictCode, buyerWardCode } = buyerAddress;
+
+  const linePromises = [...bySeller.entries()].map(([sellerId, sellerItems]) => {
+    const prof = profileMap[sellerId] || {};
+    const sellerLines = sellerItems.map(({ quantity, price, product }) => ({
+      quantity,
+      price,
+      product,
+    }));
+    return calculateSellerOrderShipping({
+      sellerId,
+      sellerLines,
+      sellerProvinceId: prof.sellerProvinceId ?? null,
+      sellerDistrictId: prof.sellerDistrictId ?? null,
+      sellerWardCode: prof.sellerWardCode ?? null,
+      buyerProvinceCode: buyerProvinceCode ?? null,
+      buyerDistrictCode: buyerDistrictCode ?? null,
+      buyerWardCode: buyerWardCode ?? null,
+      paymentMethod,
+    });
+  });
+
+  const lines = await Promise.all(linePromises);
+  const grandTotal = roundMoneyVnd(lines.reduce((s, l) => s + l.lineTotal, 0));
+  return { lines, grandTotal };
+}
+
+async function shippingQuote(_buyerId, body) {
+  const { items, paymentMethod: pmRaw } = body;
+  const paymentMethod = normalizePaymentMethod(pmRaw);
+  const addr = normalizeBuyerAddress(body);
+  assertBuyerDistrictWardIfRequired(addr.buyerDistrictCode, addr.buyerWardCode);
+  const { bySeller } = await loadAndGroupItemsForCheckout(items);
+  return computeShippingLines(bySeller, addr, paymentMethod);
+}
+
+async function create(buyerId, body) {
+  const { items, shippingAddress, phone, note, paymentMethod: pmRaw } = body;
+  if (!shippingAddress || !phone) {
+    throw Object.assign(new Error('Thiếu địa chỉ giao hàng hoặc số điện thoại'), { statusCode: 400 });
+  }
+
+  const paymentMethod = normalizePaymentMethod(pmRaw);
+  const addr = normalizeBuyerAddress(body);
+  assertBuyerDistrictWardIfRequired(addr.buyerDistrictCode, addr.buyerWardCode);
+  const { bySeller, decrements } = await loadAndGroupItemsForCheckout(items);
+  const { lines: shippingLines, grandTotal } = await computeShippingLines(bySeller, addr, paymentMethod);
+
+  const lineBySeller = Object.fromEntries(shippingLines.map((l) => [l.sellerId, l]));
   const orderGroupId = bySeller.size > 1 ? crypto.randomUUID() : null;
-  let totalAmountSum = 0;
 
   const createdOrders = await prisma.$transaction(async (tx) => {
     const orders = [];
     for (const [sellerId, sellerItems] of bySeller) {
-      let totalAmount = 0;
-      const details = sellerItems.map(({ productId, quantity, price }) => {
-        totalAmount += price * quantity;
-        return { productId, quantity, price };
-      });
-      totalAmountSum += totalAmount;
+      const ship = lineBySeller[sellerId];
+      const details = sellerItems.map(({ productId, quantity, price }) => ({
+        productId,
+        quantity,
+        price,
+      }));
+
+      const itemsAmount = roundMoneyVnd(ship.itemsAmount);
+      const shippingFee = roundMoneyVnd(ship.shippingFee);
+      const shippingDiscount = roundMoneyVnd(ship.shippingDiscount);
+      const codFee = roundMoneyVnd(ship.codFee);
+      const totalAmount = roundMoneyVnd(ship.lineTotal);
+
       const order = await tx.order.create({
         data: {
           buyerId,
           sellerId,
           totalAmount,
+          itemsAmount,
+          shippingFee,
+          shippingDiscount,
+          codFee,
+          buyerProvinceCode: addr.buyerProvinceCode,
+          buyerDistrictCode: addr.buyerDistrictCode,
+          buyerWardCode: addr.buyerWardCode,
           shippingAddress,
           phone,
           note: note || null,
           status: 'PENDING',
+          paymentMethod,
           details: { create: details },
         },
         include: {
@@ -84,7 +202,8 @@ async function create(buyerId, body) {
   return {
     orders: createdOrders,
     orderGroupId,
-    totalAmount: totalAmountSum,
+    totalAmount: grandTotal,
+    shippingLines,
   };
 }
 
@@ -301,4 +420,19 @@ function startAutoDeliverJob(intervalMs = 10 * 60 * 1000) {
   }, intervalMs);
 }
 
-module.exports = { create, getMyOrders, getManageOrders, getById, updateStatus, createVnpayPaymentUrl, createVnpayPaymentUrlForGroup, simulateNextStatus, autoDeliverAfter5Hours, startAutoDeliverJob };
+module.exports = {
+  create,
+  shippingQuote,
+  getMyOrders,
+  getManageOrders,
+  getById,
+  updateStatus,
+  createVnpayPaymentUrl,
+  createVnpayPaymentUrlForGroup,
+  simulateNextStatus,
+  autoDeliverAfter5Hours,
+  startAutoDeliverJob,
+  loadAndGroupItemsForCheckout,
+  computeShippingLines,
+  normalizePaymentMethod,
+};

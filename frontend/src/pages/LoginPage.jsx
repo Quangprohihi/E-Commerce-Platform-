@@ -27,12 +27,18 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post('/auth/login', form);
+      const email = String(form.email || '').trim();
+      const password = form.password;
+      const res = await api.post('/auth/login', { email, password });
       const payload = res.data?.data || {};
       login(payload.user, payload.token);
       navigate(getRoleHomePath(payload.user?.role), { replace: true });
     } catch (err) {
-      const message = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' ? 'Không kết nối được API. Hãy chạy backend (port 5000) và thử lại.' : null) ||
+        err.message ||
+        'Đăng nhập thất bại. Vui lòng thử lại.';
       setError(message);
     } finally {
       setLoading(false);

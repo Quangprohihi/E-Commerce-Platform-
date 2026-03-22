@@ -117,9 +117,27 @@ function verifyIpnCall(query) {
   return vnpay.verifyIpnCall(query);
 }
 
+/**
+ * VNPAY may return vnp_Amount in VND or in 1/100 VND depending on gateway/SDK version.
+ * Accept either when comparing to our stored order total (integer VND).
+ * @param {number} expectedVnd
+ * @param {number|string} vnpRaw
+ * @param {number} [toleranceVnd=1]
+ */
+function amountsMatchVnd(expectedVnd, vnpRaw, toleranceVnd = 1) {
+  const e = Math.round(Number(expectedVnd) || 0);
+  const received = Number(vnpRaw);
+  if (!Number.isFinite(received) || !Number.isFinite(e)) return false;
+  if (Math.abs(received - e) <= toleranceVnd) return true;
+  const scaled = received / 100;
+  if (Math.abs(scaled - e) <= toleranceVnd) return true;
+  return false;
+}
+
 module.exports = {
   buildPaymentUrl,
   buildPaymentUrlForGroup,
   verifyReturnUrl,
   verifyIpnCall,
+  amountsMatchVnd,
 };

@@ -1,5 +1,51 @@
 const prisma = require('../config/prisma');
 const { cloudinary, hasCloudinaryConfig } = require('../config/cloudinary');
+const ghnClient = require('./shipping/ghnClient.service');
+
+const PROVINCE_CACHE_MS = 6 * 60 * 60 * 1000;
+let provinceIdToNameCache = { map: null, at: 0 };
+
+async function getProvinceIdToNameMap() {
+  const now = Date.now();
+  if (provinceIdToNameCache.map && now - provinceIdToNameCache.at < PROVINCE_CACHE_MS) {
+    return provinceIdToNameCache.map;
+  }
+  try {
+    const arr = await ghnClient.fetchProvinces();
+    const map = Object.fromEntries(
+      arr.filter((p) => Number.isFinite(p.provinceId)).map((p) => [p.provinceId, p.name])
+    );
+    provinceIdToNameCache = { map, at: now };
+    return map;
+  } catch {
+    return provinceIdToNameCache.map || {};
+  }
+}
+
+function mapSellerForPublic(seller, provinceMap) {
+  if (!seller) return null;
+  const sp = seller.sellerProfile;
+  let location = sp?.sellerProvinceName != null && String(sp.sellerProvinceName).trim()
+    ? String(sp.sellerProvinceName).trim()
+    : null;
+  if (!location && sp?.sellerProvinceId != null && provinceMap) {
+    const fromGhn = provinceMap[Number(sp.sellerProvinceId)];
+    if (fromGhn) location = String(fromGhn).trim();
+  }
+  return {
+    id: seller.id,
+    fullName: seller.fullName,
+    shopName: sp?.shopName || undefined,
+    location,
+  };
+}
+
+function mapProductForPublic(product, provinceMap) {
+  return {
+    ...product,
+    seller: mapSellerForPublic(product.seller, provinceMap),
+  };
+}
 
 // Vietnamese transliteration map for slug generation
 const VIETNAMESE_MAP = {
@@ -126,12 +172,24 @@ async function getList(query = {}) {
   const where = buildWhere(query);
   const orderBy = getOrderBy(query.sort);
 
-  const [items, total] = await Promise.all([
+  const [itemsRaw, total] = await Promise.all([
     prisma.product.findMany({
       where,
       include: {
         category: { select: { id: true, name: true, slug: true } },
-        seller: { select: { id: true, fullName: true } },
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            sellerProfile: {
+              select: {
+                shopName: true,
+                sellerProvinceId: true,
+                sellerProvinceName: true,
+              },
+            },
+          },
+        },
       },
       orderBy,
       skip,
@@ -139,6 +197,9 @@ async function getList(query = {}) {
     }),
     prisma.product.count({ where }),
   ]);
+
+  const provinceMap = await getProvinceIdToNameMap();
+  const items = itemsRaw.map((p) => mapProductForPublic(p, provinceMap));
 
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
@@ -148,11 +209,24 @@ async function getBySlug(slug) {
     where: { slug, isActive: true },
     include: {
       category: { select: { id: true, name: true, slug: true } },
-      seller: { select: { id: true, fullName: true } },
+      seller: {
+        select: {
+          id: true,
+          fullName: true,
+          sellerProfile: {
+            select: {
+              shopName: true,
+              sellerProvinceId: true,
+              sellerProvinceName: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!product) throw Object.assign(new Error('Sản phẩm không tồn tại'), { statusCode: 404 });
-  return product;
+  const provinceMap = await getProvinceIdToNameMap();
+  return mapProductForPublic(product, provinceMap);
 }
 
 async function ensureSellerExists(sellerId) {

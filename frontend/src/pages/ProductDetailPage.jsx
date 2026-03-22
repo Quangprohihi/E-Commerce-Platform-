@@ -7,6 +7,7 @@ import { ProductCardSkeleton } from '../components/ui/SkeletonLoader';
 import { mockProducts } from '../data/mockProducts';
 import { addToCompare } from './ComparePage';
 import { translateAttr } from '../utils/translations';
+import { formatDisplayProductName } from '../utils/productDisplay';
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -88,6 +89,7 @@ export default function ProductDetailPage() {
   const categoryId = product.categoryId || product.category?.id;
   const stock = Number(product.stock || 0);
   const mainImage = images[activeImage] || imageUrl;
+  const displayTitle = formatDisplayProductName(product.name);
 
   const handleAddToCart = () => {
     if (stock === 0) return;
@@ -126,7 +128,7 @@ export default function ProductDetailPage() {
           <span>/</span>
           <Link to="/products" className="hover:text-primary">Sản phẩm</Link>
           <span>/</span>
-          <span className="text-primary">{product.name}</span>
+          <span className="text-primary">{displayTitle}</span>
         </div>
 
         {isFallback ? (
@@ -136,7 +138,7 @@ export default function ProductDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-[1.12fr_0.88fr] gap-10 md:gap-14 items-start">
           <div className="space-y-4">
             <div className="aspect-4/3 overflow-hidden rounded-[1.75rem] glass-shine bg-[#ece7df]">
-              <img src={mainImage} alt={product.name} className="w-full h-full object-cover" />
+              <img src={mainImage} alt={displayTitle} className="w-full h-full object-cover" />
             </div>
             {images.length > 1 ? (
               <div className="grid grid-cols-4 gap-3">
@@ -149,7 +151,7 @@ export default function ProductDetailPage() {
                       activeImage === index ? 'border-primary' : 'border-black/10'
                     }`}
                   >
-                    <img src={img} alt={`${product.name}-${index + 1}`} className="w-full h-full object-cover" />
+                    <img src={img} alt={`${displayTitle}-${index + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -158,8 +160,14 @@ export default function ProductDetailPage() {
 
           <div className="md:sticky md:top-24 space-y-6">
             <h1 className="font-serif text-3xl md:text-[42px] font-semibold text-primary leading-tight tracking-tight">
-              {product.name}
+              {displayTitle}
             </h1>
+            {product.seller?.shopName || product.seller?.fullName ? (
+              <p className="text-sm text-[#8f8a83]">
+                {product.seller?.shopName || product.seller?.fullName}
+                {product.seller?.location ? ` • ${product.seller.location}` : ''}
+              </p>
+            ) : null}
             <p className="text-2xl font-medium text-accent">
               {new Intl.NumberFormat('vi-VN').format(displayPrice)} đ
             </p>

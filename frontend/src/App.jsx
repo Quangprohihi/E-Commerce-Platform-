@@ -11,6 +11,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import CartPage from './pages/CartPage';
 import ComparePage from './pages/ComparePage';
 import CheckoutPage from './pages/CheckoutPage';
+import SellerWarehousePage from './pages/SellerWarehousePage';
 import PaymentResultPage from './pages/PaymentResultPage';
 import {
   AdminKycPage,
@@ -58,7 +59,7 @@ function App() {
           path="checkout"
           element={(
             <ProtectedRoute>
-              <RoleRoute allowedRoles={['BUYER']}>
+              <RoleRoute allowedRoles={['BUYER', 'SELLER', 'STAFF', 'ADMIN']}>
                 <CheckoutPage />
               </RoleRoute>
             </ProtectedRoute>
@@ -141,6 +142,16 @@ function App() {
             <ProtectedRoute>
               <RoleRoute allowedRoles={['SELLER', 'ADMIN']}>
                 <SellerKycPage />
+              </RoleRoute>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="seller/warehouse"
+          element={(
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={['SELLER', 'ADMIN']}>
+                <SellerWarehousePage />
               </RoleRoute>
             </ProtectedRoute>
           )}

@@ -1799,7 +1799,7 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
             <p><span className="text-text-muted">Trạng thái hiện tại:</span> {order.status}</p>
             <p><span className="text-text-muted">Địa chỉ:</span> {order.shippingAddress || '--'}</p>
             <p><span className="text-text-muted">Số điện thoại:</span> {order.phone || '--'}</p>
-            <p><span className="text-text-muted">Tổng tiền:</span> {currency(order.totalAmount)}</p>
+            <p><span className="text-text-muted">Thanh toán:</span> {order.paymentMethod || 'COD'}</p>
             {order.details?.length ? (
               <div className="rounded-xl border border-black/10 bg-white/70 p-4">
                 <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">Sản phẩm trong đơn</p>
@@ -1824,6 +1824,45 @@ function ManageOrdersPage({ title, subtitle, backPath, backLabel }) {
                 </div>
               </div>
             ) : null}
+            {(() => {
+              const itemsAmt = Number(order.itemsAmount ?? 0);
+              const shipFee = Number(order.shippingFee ?? 0);
+              const shipDisc = Number(order.shippingDiscount ?? 0);
+              const cod = Number(order.codFee ?? 0);
+              const total = Number(order.totalAmount ?? 0);
+              return (
+                <div className="rounded-xl border border-black/10 bg-white/75 p-4 space-y-2 text-sm">
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Thanh toán</p>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-text-muted">Tiền hàng</span>
+                    <span className="font-medium tabular-nums">{currency(itemsAmt)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-text-muted">Phí vận chuyển</span>
+                    <span className="font-medium tabular-nums">{currency(shipFee)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-text-muted">Giảm giá ship</span>
+                    <span className={`font-medium tabular-nums ${shipDisc > 0 ? 'text-emerald-700' : ''}`}>
+                      {shipDisc > 0 ? `−${currency(shipDisc)}` : currency(shipDisc)}
+                    </span>
+                  </div>
+                  {cod > 0 ? (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-text-muted">Phí thu hộ (COD)</span>
+                      <span className="font-medium tabular-nums">{currency(cod)}</span>
+                    </div>
+                  ) : null}
+                  <div className="pt-2 mt-2 border-t border-black/10 flex justify-between gap-4 items-start">
+                    <div>
+                      <p className="font-medium text-primary">Tổng tiền khách phải trả</p>
+                      <p className="text-xs text-text-muted mt-0.5">Tiền hàng + phí ship − giảm giá ship{cod > 0 ? ' + phí COD' : ''}</p>
+                    </div>
+                    <span className="font-semibold text-primary text-base tabular-nums shrink-0">{currency(total)}</span>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex flex-wrap items-center gap-3">
               <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-black/10 px-3 bg-white/70">
                 <option value="CONFIRMED">CONFIRMED</option>

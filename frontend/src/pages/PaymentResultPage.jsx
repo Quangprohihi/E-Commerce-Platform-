@@ -1,12 +1,17 @@
 import { Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { getRoleHomePath } from '../utils/auth';
 
 export default function PaymentResultPage() {
   const [searchParams] = useSearchParams();
+  const { role } = useAuth();
   const status = searchParams.get('status') || 'fail';
   const orderId = searchParams.get('orderId') || '';
   const message = searchParams.get('message') || '';
 
   const isSuccess = status === 'success';
+  const ordersLink = role === 'BUYER' ? '/account/orders' : role ? getRoleHomePath(role) : '/';
+  const ordersLabel = role === 'BUYER' ? 'Xem đơn hàng' : role ? 'Về trang quản lý' : 'Trang chủ';
 
   return (
     <div className="min-h-screen pt-24 pb-16 px-4 flex items-center justify-center">
@@ -29,10 +34,10 @@ export default function PaymentResultPage() {
         {orderId && <p className="text-sm text-[#7f786f] mb-6">Mã đơn hàng: {orderId.slice(0, 12)}...</p>}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            to="/account/orders"
+            to={ordersLink}
             className="inline-flex px-6 py-3 rounded-full bg-primary text-white text-xs uppercase tracking-[0.16em] hover:bg-primary-soft transition-colors"
           >
-            Xem đơn hàng
+            {ordersLabel}
           </Link>
           <Link
             to="/"

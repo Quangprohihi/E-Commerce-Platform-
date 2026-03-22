@@ -110,15 +110,19 @@ model PasswordResetToken {
 }
 
 model SellerProfile {
-  id           String     @id @default(cuid())
-  userId       String     @unique @map("user_id")
-  shopName     String     @map("shop_name")
-  description  String?
-  kycDocument  String?    @map("kyc_document")
-  kycStatus    KycStatus  @default(PENDING) @map("kyc_status")
-  approvedAt   DateTime?  @map("approved_at")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id                   String     @id @default(cuid())
+  userId               String     @unique @map("user_id")
+  shopName             String     @map("shop_name")
+  description          String?
+  kycDocument          String?    @map("kyc_document")
+  kycStatus            KycStatus  @default(PENDING) @map("kyc_status")
+  approvedAt           DateTime?  @map("approved_at")
+  sellerProvinceId     Int?       @map("seller_province_id")
+  sellerDistrictId     Int?       @map("seller_district_id")
+  sellerWardCode       String?    @map("seller_ward_code")
+  sellerProvinceName   String?    @map("seller_province_name")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -155,6 +159,10 @@ model Product {
   gender       String?          // UNISEX, MEN, WOMEN
   stock        Int              @default(0)
   isActive     Boolean          @default(true) @map("is_active")
+  weightGrams  Int?             @map("weight_grams")
+  packageLengthCm  Decimal?   @map("package_length_cm") @db.Decimal(10, 2)
+  packageWidthCm   Decimal?   @map("package_width_cm") @db.Decimal(10, 2)
+  packageHeightCm  Decimal?   @map("package_height_cm") @db.Decimal(10, 2)
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
@@ -172,6 +180,13 @@ model Order {
   sellerId         String?     @map("seller_id")
   orderGroupId     String?     @map("order_group_id")
   totalAmount      Decimal     @map("total_amount") @db.Decimal(12, 2)
+  itemsAmount      Decimal     @default(0) @map("items_amount") @db.Decimal(12, 2)
+  shippingFee      Decimal     @default(0) @map("shipping_fee") @db.Decimal(12, 2)
+  shippingDiscount Decimal     @default(0) @map("shipping_discount") @db.Decimal(12, 2)
+  codFee           Decimal     @default(0) @map("cod_fee") @db.Decimal(12, 2)
+  buyerProvinceCode  String?    @map("buyer_province_code")
+  buyerDistrictCode  String?    @map("buyer_district_code")
+  buyerWardCode      String?    @map("buyer_ward_code")
   status           OrderStatus @default(PENDING)
   shippingAddress  String     @map("shipping_address")
   phone            String

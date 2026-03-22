@@ -17,6 +17,7 @@ import {
   Settings,
   Layers,
   Wallet,
+  MapPin,
 } from 'lucide-react';
 
 export const ROLE_META = {
@@ -38,6 +39,7 @@ export const DASHBOARD_MENUS = {
     { to: '/seller', label: 'Tổng quan', icon: LayoutDashboard },
     { to: '/seller/products', label: 'Sản phẩm', icon: Package },
     { to: '/seller/orders', label: 'Đơn hàng', icon: ClipboardList },
+    { to: '/seller/warehouse', label: 'Địa chỉ kho GHN', icon: MapPin },
     { to: '/seller/wallet', label: 'Ví & Rút tiền', icon: Wallet },
     { to: '/seller/kyc', label: 'Xác minh KYC', icon: BadgeCheck },
     { to: '/settings', label: 'Cài đặt', icon: Settings },

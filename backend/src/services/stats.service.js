@@ -86,7 +86,7 @@ async function getAdminStats({ startDate, endDate } = {}) {
 
   const [
     totalRevenueAgg,
-    totalGmvAgg,
+    gmvAndFeesAgg,
     orderGroups,
     pendingWithdrawals,
     userGroups,
@@ -97,15 +97,21 @@ async function getAdminStats({ startDate, endDate } = {}) {
     topProductGroups,
     lowStockRaw,
   ] = await Promise.all([
-    // Doanh thu thực (chỉ đơn DELIVERED trong khoảng)
+    // Doanh thu tiền hàng (seller): đơn DELIVERED — không gồm ship/COD
     prisma.order.aggregate({
       where: { status: 'DELIVERED', createdAt: dateFilter },
-      _sum: { totalAmount: true },
+      _sum: { itemsAmount: true },
     }),
-    // GMV (tất cả đơn không CANCELLED trong khoảng)
+    // GMV + breakdown: đơn không hủy (buyer trả = totalAmount)
     prisma.order.aggregate({
       where: { status: { not: 'CANCELLED' }, createdAt: dateFilter },
-      _sum: { totalAmount: true },
+      _sum: {
+        totalAmount: true,
+        itemsAmount: true,
+        shippingFee: true,
+        shippingDiscount: true,
+        codFee: true,
+      },
     }),
     // Số đơn theo trạng thái trong khoảng
     prisma.order.groupBy({
@@ -123,7 +129,11 @@ async function getAdminStats({ startDate, endDate } = {}) {
       orderBy: { createdAt: 'desc' },
       take: 6,
       select: {
-        id: true, status: true, totalAmount: true, createdAt: true,
+        id: true,
+        status: true,
+        totalAmount: true,
+        itemsAmount: true,
+        createdAt: true,
         buyer: { select: { fullName: true, email: true } },
       },
     }),
@@ -131,15 +141,15 @@ async function getAdminStats({ startDate, endDate } = {}) {
     prisma.order.groupBy({
       by: ['sellerId'],
       where: { status: 'DELIVERED', createdAt: dateFilter },
-      _sum: { totalAmount: true },
+      _sum: { itemsAmount: true },
       _count: { id: true },
-      orderBy: { _sum: { totalAmount: 'desc' } },
+      orderBy: { _sum: { itemsAmount: 'desc' } },
       take: 5,
     }),
     // Revenue trend trong khoảng
     prisma.order.findMany({
       where: { createdAt: dateFilter },
-      select: { createdAt: true, totalAmount: true, status: true },
+      select: { createdAt: true, totalAmount: true, itemsAmount: true, status: true },
       orderBy: { createdAt: 'asc' },
     }),
     // User growth trend trong khoảng
@@ -186,7 +196,7 @@ async function getAdminStats({ startDate, endDate } = {}) {
   const topSellers = topSellerGroups.map((g) => ({
     sellerId: g.sellerId,
     sellerName: sellerMap.get(g.sellerId)?.fullName || sellerMap.get(g.sellerId)?.email || g.sellerId,
-    revenue: Number(g._sum?.totalAmount ?? 0),
+    revenue: Number(g._sum?.itemsAmount ?? 0),
     orderCount: g._count.id,
   }));
 
@@ -203,7 +213,7 @@ async function getAdminStats({ startDate, endDate } = {}) {
     if (trendMap.has(key)) {
       const cur = trendMap.get(key);
       if (o.status !== 'CANCELLED') cur.gmv += Number(o.totalAmount);
-      if (o.status === 'DELIVERED') cur.revenue += Number(o.totalAmount);
+      if (o.status === 'DELIVERED') cur.revenue += Number(o.itemsAmount ?? o.totalAmount);
     }
   }
   const revenueTrend = Array.from(trendMap.values());
@@ -248,9 +258,16 @@ async function getAdminStats({ startDate, endDate } = {}) {
     sellerName: p.seller?.fullName || p.seller?.email || '--',
   }));
 
+  const sumGmv = gmvAndFeesAgg._sum;
+  const shippingCollected =
+    Number(sumGmv?.shippingFee ?? 0) - Number(sumGmv?.shippingDiscount ?? 0);
+
   return {
-    totalRevenue: Number(totalRevenueAgg._sum?.totalAmount ?? 0),
-    totalGmv: Number(totalGmvAgg._sum?.totalAmount ?? 0),
+    totalRevenue: Number(totalRevenueAgg._sum?.itemsAmount ?? 0),
+    totalGmv: Number(sumGmv?.totalAmount ?? 0),
+    itemRevenueNonCancelled: Number(sumGmv?.itemsAmount ?? 0),
+    shippingCollected,
+    codFeeCollected: Number(sumGmv?.codFee ?? 0),
     orderCounts: {
       total: Object.values(orderCountByStatus).reduce((a, b) => a + b, 0),
       pending: orderCountByStatus.PENDING ?? 0,
@@ -271,6 +288,7 @@ async function getAdminStats({ startDate, endDate } = {}) {
       id: o.id,
       status: o.status,
       totalAmount: Number(o.totalAmount),
+      itemsAmount: Number(o.itemsAmount ?? o.totalAmount),
       createdAt: o.createdAt,
       buyerName: o.buyer?.fullName || o.buyer?.email || '--',
     })),
